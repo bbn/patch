@@ -1,8 +1,11 @@
+
 'use client'
 
-import { useState } from 'react'
+import { useChat } from 'ai/react'
 import { Button } from "@/components/ui/button"
-import { GearComponent } from '@/components/GearComponent'
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Card, CardContent, CardFooter } from "@/components/ui/card"
 
 interface Gear {
   id: string
@@ -11,31 +14,13 @@ interface Gear {
   outputMessage: string
 }
 
-export default function Home() {
-  const [gears, setGears] = useState<Gear[]>([])
-
-  const addGear = () => {
-    const newGear = {
-      id: `gear-${gears.length + 1}`,
-      outputUrls: [],
-      inputMessage: '',
-      outputMessage: ''
-    }
-    setGears([...gears, newGear])
-  }
-
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Gears Project</h1>
-      <Button onClick={addGear} className="mb-4">Add Gear</Button>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {gears.map((gear) => (
-          <GearComponent key={gear.id} gear={gear} setGears={setGears} gears={gears} />
-        ))}
-      </div>
-    </div>
-  )
+interface GearComponentProps {
+  gear: Gear
+  setGears: (gears: Gear[]) => void
+  gears: Gear[]
 }
+
+export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
   const { messages, input, handleInputChange, handleSubmit, setMessages } = useChat({
     api: `/api/gears/${gear.id}/chat`,
   })
@@ -76,12 +61,10 @@ export default function Home() {
         )
         setGears(updatedGears)
 
-        // Send output to connected gears
         gear.outputUrls.forEach(url => {
           const targetGearId = url.split('/').pop()
           const targetGear = gears.find(g => g.id === targetGearId)
           if (targetGear) {
-            // Simulate sending message to target gear
             console.log(`Sending message from ${gear.id} to ${targetGearId}`)
           }
         })
