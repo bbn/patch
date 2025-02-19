@@ -7,8 +7,16 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 
+// Define the Gear type interface
+interface Gear {
+  id: string
+  outputUrls: string[]
+  inputMessage: string
+  outputMessage: string
+}
+
 export default function Home() {
-  const [gears, setGears] = useState([])
+  const [gears, setGears] = useState<Gear[]>([])
 
   const addGear = () => {
     const newGear = {
