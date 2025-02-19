@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
+import { ChangeEvent, KeyboardEvent } from 'react'
 
 interface Gear {
   id: string
@@ -25,7 +26,7 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
     api: `/api/gears/${gear.id}/chat`,
   })
 
-  const handleInputMessageChange = (e) => {
+  const handleInputMessageChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const updatedGears = gears.map(g => 
       g.id === gear.id ? {...g, inputMessage: e.target.value} : g
     )
@@ -43,7 +44,7 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
         body: JSON.stringify({ inputMessage: JSON.parse(inputMessage) }),
       })
 
-      if (response.ok) {
+      if (response.ok && response.body) {
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let outputMessage = ''
@@ -73,6 +74,18 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
       }
     } catch (error) {
       console.error('Error processing input message:', error)
+    }
+  }
+
+  const handleUrlKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const newUrl = (e.target as HTMLInputElement).value
+      setGears(gears.map(g => 
+        g.id === gear.id 
+          ? {...g, outputUrls: [...g.outputUrls, newUrl]} 
+          : g
+      ))
+      ;(e.target as HTMLInputElement).value = ''
     }
   }
 
@@ -108,17 +121,7 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
         <div className="mb-2">
           <Input
             placeholder="Add output URL"
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                const newUrl = e.target.value
-                setGears(gears.map(g => 
-                  g.id === gear.id 
-                    ? {...g, outputUrls: [...g.outputUrls, newUrl]} 
-                    : g
-                ))
-                e.target.value = ''
-              }
-            }}
+            onKeyPress={handleUrlKeyPress}
           />
         </div>
         <div>
