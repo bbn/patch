@@ -1,6 +1,7 @@
-import { kv } from "@vercel/kv";
+
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
+import { Gear } from "@/lib/models/Gear";
 
 export const runtime = "edge";
 
@@ -10,16 +11,19 @@ export async function POST(
 ) {
   const { inputMessage } = await req.json();
   const gearId = params.gearId;
-  const gear = await kv.get<Gear>(gearId);
+  
+  const gear = await Gear.findById(gearId);
+  if (!gear) {
+    return new Response("Gear not found", { status: 404 });
+  }
 
-  // Retrieve gear data from Vercel KV
-  const gearData = await kv.get(`gear:${gearId}`);
-  const systemPrompt = gearData?.systemPrompt || "You are a helpful assistant.";
+  gear.inputMessage = JSON.stringify(inputMessage);
+  await gear.save();
 
   const result = streamText({
     model: openai("gpt-4-turbo"),
     messages: [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: gear.systemPrompt },
       {
         role: "user",
         content: `Process this input: ${JSON.stringify(inputMessage)}`,
@@ -28,6 +32,4 @@ export async function POST(
   });
 
   return result.toDataStreamResponse();
-
-  // return status code 202 for accpeting the request for an async job
 }
