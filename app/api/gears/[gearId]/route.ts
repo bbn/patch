@@ -1,4 +1,3 @@
-
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { Gear } from "@/lib/models/Gear";
@@ -10,8 +9,9 @@ export async function POST(
   { params }: { params: { gearId: string } },
 ) {
   const { inputMessage } = await req.json();
-  const gearId = params.gearId;
-  
+
+  const gearId = await params.gearId;
+
   const gear = await Gear.findById(gearId);
   if (!gear) {
     return new Response("Gear not found", { status: 404 });
