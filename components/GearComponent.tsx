@@ -51,6 +51,14 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
     if (!gear.inputMessage) return
 
     try {
+      // Validate JSON
+      JSON.parse(gear.inputMessage)
+    } catch (e) {
+      alert('Please enter valid JSON')
+      return
+    }
+
+    try {
       const response = await fetch(`/api/gears/${gear.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
