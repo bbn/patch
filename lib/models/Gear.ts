@@ -108,42 +108,45 @@ export class Gear {
     return `Here is the input data: ${formattedInput}`;
   }
 
-
   async process(messageData: { data: any }) {
     try {
       const output = await this.processWithLLM(messageData.data);
-
-      console.log(
-        `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`
-      );
-
       await this.forwardOutputToGears(output);
-
       return output;
     } catch (error) {
-      console.error(`Error processing with LLM: ${error}`);
+      console.error(`Error processing: ${error}`);
       throw error;
     }
   }
 
   private async processWithLLM(data: any): Promise<any> {
-    const response = await fetch('/api/gears/' + this.id, {
-      method: 'POST',
+    const response = await fetch("/api/gears/" + this.id, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inputMessage: data }),
+    });
+    if (!response.ok) {
+      throw new Error("Failed to process with LLM");
+    }
+    return await response.json();
+  }
 
   private async forwardOutputToGears(output: any): Promise<void> {
+    console.log(
+      `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`,
+    );
     for (const url of this.outputUrls) {
       const newMessageId = crypto.randomUUID();
       try {
         const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             source_gear_id: this.id,
             message_id: newMessageId,
-            data: output
-          })
+            data: output,
+          }),
         });
-
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -151,17 +154,5 @@ export class Gear {
         console.error(`Error forwarding to ${url}: ${error}`);
       }
     }
-  }
-
-
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputMessage: data })
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to process with LLM');
-    }
-
-    return await response.json();
   }
 }
