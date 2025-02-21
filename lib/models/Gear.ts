@@ -43,6 +43,11 @@ Please process the input data and generate an output according to the instructio
     return basePrompt;
   }
 
+  userPrompt(data: any): string {
+    const formattedInput = JSON.stringify(data, null, 2);
+    return `Here is the input data: ${formattedInput}`;
+  }
+
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
     const gear = new Gear(data);
     await gear.save();
