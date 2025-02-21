@@ -107,4 +107,55 @@ Please process the input data and generate an output according to the instructio
   removeOutputUrl(url: string) {
     this.data.outputUrls = this.data.outputUrls.filter((u) => u !== url);
   }
+
+  async process(messageData: { data: any }) {
+    try {
+      const output = await this.processWithLLM(messageData.data);
+
+      console.log(
+        `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`
+      );
+
+      // Forward to output gears
+      for (const url of this.outputUrls) {
+        const newMessageId = crypto.randomUUID();
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source_gear_id: this.id,
+              message_id: newMessageId,
+              data: output
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+        } catch (error) {
+          console.error(`Error forwarding to ${url}: ${error}`);
+        }
+      }
+
+      return output;
+    } catch (error) {
+      console.error(`Error processing with LLM: ${error}`);
+      throw error;
+    }
+  }
+
+  private async processWithLLM(data: any): Promise<any> {
+    const response = await fetch('/api/gears/' + this.id, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputMessage: data })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to process with LLM');
+    }
+
+    return await response.json();
+  }
 }
