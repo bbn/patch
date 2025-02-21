@@ -117,27 +117,7 @@ export class Gear {
         `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`
       );
 
-      // Forward to output gears
-      for (const url of this.outputUrls) {
-        const newMessageId = crypto.randomUUID();
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              source_gear_id: this.id,
-              message_id: newMessageId,
-              data: output
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-        } catch (error) {
-          console.error(`Error forwarding to ${url}: ${error}`);
-        }
-      }
+      await this.forwardOutputToGears(output);
 
       return output;
     } catch (error) {
@@ -149,6 +129,31 @@ export class Gear {
   private async processWithLLM(data: any): Promise<any> {
     const response = await fetch('/api/gears/' + this.id, {
       method: 'POST',
+
+  private async forwardOutputToGears(output: any): Promise<void> {
+    for (const url of this.outputUrls) {
+      const newMessageId = crypto.randomUUID();
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_gear_id: this.id,
+            message_id: newMessageId,
+            data: output
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+      } catch (error) {
+        console.error(`Error forwarding to ${url}: ${error}`);
+      }
+    }
+  }
+
+
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inputMessage: data })
     });
