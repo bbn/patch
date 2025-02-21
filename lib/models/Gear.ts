@@ -1,12 +1,18 @@
 
 // import { kv } from '@vercel/kv'
 
+export interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface GearData {
   id: string
   systemPrompt?: string
   outputUrls: string[]
   inputMessage: string
   outputMessage: string
+  messages: Message[]
   createdAt: number
   updatedAt: number
 }
@@ -21,6 +27,7 @@ export class Gear {
       outputUrls: data.outputUrls || [],
       inputMessage: data.inputMessage || "",
       outputMessage: data.outputMessage || "",
+      messages: data.messages || [],
       createdAt: data.createdAt || Date.now(),
       updatedAt: data.updatedAt || Date.now()
     }
@@ -52,8 +59,17 @@ export class Gear {
   get outputUrls() { return this.data.outputUrls }
   get inputMessage() { return this.data.inputMessage }
   get outputMessage() { return this.data.outputMessage }
+  get messages() { return this.data.messages }
   get createdAt() { return this.data.createdAt }
   get updatedAt() { return this.data.updatedAt }
+
+  addMessage(role: 'user' | 'assistant', content: string) {
+    this.data.messages.push({ role, content })
+  }
+
+  clearMessages() {
+    this.data.messages = []
+  }
 
   // Setters
   set systemPrompt(value: string) { this.data.systemPrompt = value }
