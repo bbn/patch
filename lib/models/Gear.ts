@@ -32,22 +32,6 @@ export class Gear {
     };
   }
 
-  systemPrompt(): string {
-    const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
-
-Here are this Gear's instructional messages:
-${JSON.stringify(this.data.messages, null, 2)}
-
-Please process the input data and generate an output according to the instruction.`;
-
-    return basePrompt;
-  }
-
-  userPrompt(data: any): string {
-    const formattedInput = JSON.stringify(data, null, 2);
-    return `Here is the input data: ${formattedInput}`;
-  }
-
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
     const gear = new Gear(data);
     await gear.save();
@@ -107,6 +91,23 @@ Please process the input data and generate an output according to the instructio
   removeOutputUrl(url: string) {
     this.data.outputUrls = this.data.outputUrls.filter((u) => u !== url);
   }
+
+  systemPrompt(): string {
+    const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
+
+  Here are this Gear's instructional messages:
+  ${JSON.stringify(this.data.messages, null, 2)}
+
+  Please process the input data and generate an output according to the instruction.`;
+
+    return basePrompt;
+  }
+
+  userPrompt(data: any): string {
+    const formattedInput = JSON.stringify(data, null, 2);
+    return `Here is the input data: ${formattedInput}`;
+  }
+
 
   async process(messageData: { data: any }) {
     try {
