@@ -120,15 +120,38 @@ export class Gear {
   }
 
   private async processWithLLM(data: any): Promise<any> {
-    const response = await fetch("/api/gears/" + this.id, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inputMessage: data }),
-    });
-    if (!response.ok) {
-      throw new Error("Failed to process with LLM");
+    try {
+      const response = await fetch("/api/gears/" + this.id, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          messages: [
+            {
+              role: "system",
+              content: this.systemPrompt()
+            },
+            {
+              role: "user", 
+              content: this.userPrompt(data)
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to process with LLM");
+      }
+
+      const result = await response.json();
+      if (!result.content) {
+        throw new Error("Received empty content from LLM response");
+      }
+
+      return result.content;
+    } catch (error) {
+      console.error("Error processing with LLM:", error);
+      throw error;
     }
-    return await response.json();
   }
 
   private async forwardOutputToGears(output: any): Promise<void> {
