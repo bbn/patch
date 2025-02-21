@@ -1,0 +1,82 @@
+ def process_system_prompt(self) -> str:
+        """Generate a system prompt for LLM processing"""
+        base_prompt = """You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
+
+Here are this Gear's instructional messages:
+{formatted_chat_messages}
+
+Please process the input data and generate an output according to the instruction.
+"""
+        messages_dict = [msg.model_dump() for msg in self.chat_messages]
+        formatted_chat_messages = json.dumps(messages_dict,
+                                             indent=2,
+                                             default=str)
+        prompt = base_prompt.format(
+            formatted_chat_messages=formatted_chat_messages)
+        return prompt
+
+    def process_user_prompt(self, message: InputMessage) -> str:
+        """Turning the input Message into the user prompt that will be used to generate the output."""
+        input = message.data
+        formatted_input = json.dumps(input, indent=2)
+        prompt = f"Here is the input data: {formatted_input}"
+        return prompt
+
+    def process_message(self, message_data: dict):
+        """Process a message sent to a gear"""
+        try:
+            output = self.process_with_llm(message_data['data'])
+
+            # Forward to output gears
+            logger.info(
+                f"Forwarding the following output from {self.id} to output gears {self.output_urls}: {output}"
+            )
+
+            for url in self.output_urls:
+                new_message_id = str(uuid.uuid4())
+                try:
+                    # Send to the correct gear endpoint using synchronous client
+                    with httpx.Client(timeout=30.0) as client:
+                        response = client.post(url,
+                                            json={
+                                                "source_gear_id": self.id,
+                                                "message_id": new_message_id,
+                                                "data": output
+                                            })
+                    response.raise_for_status()
+                    logger.info(f"Successfully forwarded message to {url}")
+                except Exception as e:
+                    logger.error(f"Error forwarding message to {url}: {str(e)}")
+
+            logger.info(
+                f"Message {message_data['message_id']} processed successfully by gear {self.id}"
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error processing message {message_data['message_id']} in gear {self.id}: {str(e)}"
+            )
+            raise
+
+    def process_with_llm(self, data: dict) -> str:
+        """Process input data with LLM based on gear instructions"""
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{
+                    "role": "system",
+                    "content": self.process_system_prompt()
+                }, {
+                    "role": "user",
+                    "content": self.process_user_prompt(data)
+                }],
+                max_tokens=500)
+
+            # Get the content and ensure it's not None
+            content = response.choices[0].message.content
+            if content is None:
+                raise ValueError("Received None content from LLM response")
+            return content
+        except Exception as e:
+            logger.error(f"Error processing with LLM: {str(e)}")
+            raise
