@@ -33,7 +33,14 @@ export class Gear {
   }
 
   systemPrompt(): string {
-    return "You are a helpful assistant.";
+    const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
+
+Here are this Gear's instructional messages:
+${JSON.stringify(this.data.messages, null, 2)}
+
+Please process the input data and generate an output according to the instruction.`;
+
+    return basePrompt;
   }
 
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
