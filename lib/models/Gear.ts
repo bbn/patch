@@ -1,5 +1,5 @@
 
-import { kv } from '@vercel/kv'
+// import { kv } from '@vercel/kv'
 
 export interface GearData {
   id: string
@@ -26,10 +26,10 @@ export class Gear {
     }
   }
 
-  static async findById(id: string): Promise<Gear | null> {
-    const data = await kv.get<GearData>(`gear:${id}`)
-    return data ? new Gear(data) : null
-  }
+  // static async findById(id: string): Promise<Gear | null> {
+  //   const data = await kv.get<GearData>(`gear:${id}`)
+  //   return data ? new Gear(data) : null
+  // }
 
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
     const gear = new Gear(data)
@@ -39,12 +39,12 @@ export class Gear {
 
   async save(): Promise<void> {
     this.data.updatedAt = Date.now()
-    await kv.set(`gear:${this.data.id}`, this.data)
+    // await kv.set(`gear:${this.data.id}`, this.data)
   }
 
-  async delete(): Promise<void> {
-    await kv.del(`gear:${this.data.id}`)
-  }
+  // async delete(): Promise<void> {
+  //   await kv.del(`gear:${this.data.id}`)
+  // }
 
   // Getters
   get id() { return this.data.id }
