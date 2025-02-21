@@ -10,7 +10,7 @@ export async function POST(
 ) {
   const { inputMessage } = await req.json();
 
-  const gearId = await params.gearId;
+  const gearId = (await params).gearId;
 
   const gear = await Gear.findById(gearId);
   if (!gear) {
