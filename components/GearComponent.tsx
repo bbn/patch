@@ -6,12 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { KeyboardEvent } from "react";
 
-interface Gear {
-  id: string;
-  outputUrls: string[];
-  inputMessage: string;
-  outputMessage: string;
-}
+import { GearData, Message } from "@/lib/models/Gear";
+type Gear = GearData & {
+  inputMessage?: string;
+  outputMessage?: string;
+};
 
 interface GearComponentProps {
   gear: Gear;
@@ -42,7 +41,7 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
   const updateMessages = (outputMessage: string) => {
     setMessages([
       ...messages,
-      { role: "user", content: `Input: ${gear.inputMessage}` },
+      { role: "user", content: `Input: ${gear.inputMessage || ""}` },
       { role: "assistant", content: outputMessage },
     ]);
 
