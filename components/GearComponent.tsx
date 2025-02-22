@@ -92,7 +92,14 @@ export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
   return (
     <Card className="w-full">
       <CardContent>
-        <h2 className="text-xl font-semibold mb-2">{gear.id}</h2>
+        <h2 className="text-xl font-semibold mb-2">
+          <a
+            href={`/gears/${gear.id}`}
+            className="text-blue-600 hover:underline"
+          >
+            {gear.id}
+          </a>
+        </h2>
         {renderMessageHistory()}
         {renderUrlSection()}
       </CardContent>
