@@ -10,8 +10,6 @@ export interface Message {
 export interface GearData {
   id: string;
   outputUrls: string[];
-  inputMessage: string;
-  outputMessage: string;
   messages: Message[];
   createdAt: number;
   updatedAt: number;
@@ -24,8 +22,6 @@ export class Gear {
     this.data = {
       id: data.id,
       outputUrls: data.outputUrls || [],
-      inputMessage: data.inputMessage || "",
-      outputMessage: data.outputMessage || "",
       messages: data.messages || [],
       createdAt: data.createdAt || Date.now(),
       updatedAt: data.updatedAt || Date.now(),
@@ -50,12 +46,6 @@ export class Gear {
   get outputUrls() {
     return this.data.outputUrls;
   }
-  get inputMessage() {
-    return this.data.inputMessage;
-  }
-  get outputMessage() {
-    return this.data.outputMessage;
-  }
   get messages() {
     return this.data.messages;
   }
@@ -68,18 +58,6 @@ export class Gear {
 
   addMessage(role: Role, content: string) {
     this.data.messages.push({ role, content });
-  }
-
-  clearMessages() {
-    this.data.messages = [];
-  }
-
-  // Setters
-  set inputMessage(value: string) {
-    this.data.inputMessage = value;
-  }
-  set outputMessage(value: string) {
-    this.data.outputMessage = value;
   }
 
   addOutputUrl(url: string) {
@@ -108,9 +86,9 @@ export class Gear {
     return `Here is the input data: ${formattedInput}`;
   }
 
-  async process(messageData: { data: any }) {
+  async process(input: string) {
     try {
-      const output = await this.processWithLLM(messageData.data);
+      const output = await this.processWithLLM(input);
       await this.forwardOutputToGears(output);
       return output;
     } catch (error) {
@@ -119,7 +97,7 @@ export class Gear {
     }
   }
 
-  private async processWithLLM(data: any): Promise<any> {
+  private async processWithLLM(input: string): Promise<any> {
     try {
       const response = await fetch("/api/gears/" + this.id, {
         method: "POST",
@@ -132,21 +110,18 @@ export class Gear {
             },
             {
               role: "user", 
-              content: this.userPrompt(data)
+              content: this.userPrompt(input)
             }
           ]
         }),
       });
-
       if (!response.ok) {
         throw new Error("Failed to process with LLM");
       }
-
       const result = await response.json();
       if (!result.content) {
         throw new Error("Received empty content from LLM response");
       }
-
       return result.content;
     } catch (error) {
       console.error("Error processing with LLM:", error);
