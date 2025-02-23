@@ -12,16 +12,26 @@ interface Gear {
 }
 
 export default function Home() {
-  const [gears, setGears] = useState<Gear[]>([]);
+  const [gears, setGears] = useState<Gear[]>(() => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('gears');
+    return saved ? JSON.parse(saved) : [];
+  }
+  return [];
+});
   const [selectedGear, setSelectedGear] = useState<string | null>(null);
 
   const addGear = () => {
     const newGear: Gear = {
-      id: `gear-${Date.now()}`, // Use timestamp for unique ID
+      id: `gear-${Date.now()}`,
       outputUrls: [],
       messages: [],
     };
-    setGears((prevGears) => [...prevGears, newGear]);
+    setGears((prevGears) => {
+      const updatedGears = [...prevGears, newGear];
+      localStorage.setItem('gears', JSON.stringify(updatedGears));
+      return updatedGears;
+    });
   };
 
   const handleGearSelect = (id: string) => {
