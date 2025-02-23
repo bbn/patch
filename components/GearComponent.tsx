@@ -1,109 +1,62 @@
-"use client";
+import React from "react";
+import ReactFlow, { Handle, Position } from "reactflow";
+import "reactflow/dist/style.css";
 
-import { useChat } from "ai/react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { KeyboardEvent } from "react";
+interface Gear {
+  id: string;
+  outputUrls: string[];
+  messages: { role: string; content: string }[];
+}
 
-import { GearData, Message } from "@/lib/models/Gear";
-type Gear = GearData & {
-  inputMessage?: string;
-  outputMessage?: string;
+interface GearNodeProps {
+  id: string;
+  data: { label: string };
+  isConnectable: boolean;
+}
+
+const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
+  return (
+    <div className="rounded-lg bg-white border-2 border-gray-200 p-4 w-40 h-20 flex items-center justify-center">
+      <Handle
+        type="target"
+        position={Position.Left}
+        isConnectable={isConnectable}
+      />
+      <div>{data.label}</div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        isConnectable={isConnectable}
+      />
+    </div>
+  );
 };
 
 interface GearComponentProps {
   gear: Gear;
-  setGears: (gears: Gear[]) => void;
-  gears: Gear[];
+  onSelect: (id: string) => void;
 }
 
-export function GearComponent({ gear, setGears, gears }: GearComponentProps) {
-  const { messages, input, handleInputChange, handleSubmit, setMessages } =
-    useChat({
-      api: `/api/gears/${gear.id}/chat`,
-    });
+export const GearComponent: React.FC<GearComponentProps> = ({
+  gear,
+  onSelect,
+}) => {
+  const nodes = [
+    {
+      id: gear.id,
+      type: "gearNode",
+      data: { label: `Gear ${gear.id}` },
+      position: { x: 0, y: 0 },
+    },
+  ];
 
-  const handleUrlKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      const newUrl = (e.target as HTMLInputElement).value;
-      setGears(
-        gears.map((g) =>
-          g.id === gear.id
-            ? { ...g, outputUrls: [...g.outputUrls, newUrl] }
-            : g,
-        ),
-      );
-      (e.target as HTMLInputElement).value = "";
-    }
+  const nodeTypes = {
+    gearNode: GearNode,
   };
-
-  const updateMessages = (outputMessage: string) => {
-    setMessages([
-      ...messages,
-      { role: "user", content: `Input: ${gear.inputMessage || ""}` },
-      { role: "assistant", content: outputMessage },
-    ]);
-
-    setGears(
-      gears.map((g) => (g.id === gear.id ? { ...g, outputMessage } : g)),
-    );
-  };
-
-  // Render Sections
-  const renderMessageHistory = () => (
-    <div className="h-40 overflow-y-auto mb-4 border p-2 rounded">
-      {messages.map((m, index) => (
-        <div key={index} className="mb-2">
-          <strong>{m.role}:</strong> {m.content}
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderUrlSection = () => (
-    <>
-      <div className="mb-2">
-        <Input placeholder="Add output URL" onKeyPress={handleUrlKeyPress} />
-      </div>
-      <div>
-        <h3 className="font-semibold">Output URLs:</h3>
-        <ul>
-          {gear.outputUrls.map((url, index) => (
-            <li key={index}>{url}</li>
-          ))}
-        </ul>
-      </div>
-    </>
-  );
-
-  const renderChatInput = () => (
-    <form onSubmit={handleSubmit} className="flex w-full space-x-2">
-      <Input
-        value={input}
-        onChange={handleInputChange}
-        placeholder="Type your message..."
-        className="flex-grow"
-      />
-      <Button type="submit">Send</Button>
-    </form>
-  );
 
   return (
-    <Card className="w-full">
-      <CardContent>
-        <h2 className="text-xl font-semibold mb-2">
-          <a
-            href={`/gears/${gear.id}`}
-            className="text-blue-600 hover:underline"
-          >
-            {gear.id}
-          </a>
-        </h2>
-        {renderMessageHistory()}
-        {renderUrlSection()}
-      </CardContent>
-      <CardFooter>{renderChatInput()}</CardFooter>
-    </Card>
+    <div className="h-40 w-full" onClick={() => onSelect(gear.id)}>
+      <ReactFlow nodes={nodes} nodeTypes={nodeTypes} />
+    </div>
   );
-}
+};
