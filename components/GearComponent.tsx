@@ -55,10 +55,13 @@ export const GearComponent: React.FC<GearComponentProps> = ({
   };
 
   return (
-    <div className="h-[200px] w-full cursor-pointer" onClick={() => onSelect(gear.id)}>
-      <ReactFlow 
-        nodes={nodes} 
-        nodeTypes={nodeTypes} 
+    <div
+      className="h-[200px] w-full cursor-pointer"
+      onClick={() => onSelect(gear.id)}
+    >
+      <ReactFlow
+        nodes={nodes}
+        nodeTypes={nodeTypes}
         fitView
         className="bg-white rounded-lg"
       />
