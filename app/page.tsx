@@ -58,14 +58,19 @@ export default function Home() {
         <Button onClick={addGear} className="mb-4">
           Add Gear
         </Button>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {gears.map((gear) => (
-            <GearComponent
-              key={gear.id}
-              gear={gear}
-              onSelect={handleGearSelect}
-            />
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-lg min-h-[200px]">
+          {gears.length === 0 ? (
+            <div className="col-span-full text-center text-gray-500">No gears added yet</div>
+          ) : (
+            gears.map((gear) => (
+              <div key={gear.id} className="border rounded-lg shadow-sm bg-white">
+                <GearComponent
+                  gear={gear}
+                  onSelect={handleGearSelect}
+                />
+              </div>
+            ))
+          )}
         </div>
       </div>
       {selectedGear && (
