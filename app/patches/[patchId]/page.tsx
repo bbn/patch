@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChatSidebar } from "@/components/ChatSidebar";
-import ReactFlow, {
+import {
+  ReactFlow,
   MiniMap,
   Controls,
   Background,
