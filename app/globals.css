@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Calendar styles from react-day-picker */
+@import 'react-day-picker/dist/style.css';
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

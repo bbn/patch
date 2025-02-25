@@ -8,7 +8,7 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 interface Gear {
   id: string;
   outputUrls: string[];
-  messages: { role: string; content: string }[];
+  messages: { id: string; role: string; content: string }[];
 }
 
 export default function Home() {
@@ -45,7 +45,13 @@ export default function Home() {
     setGears((prevGears) =>
       prevGears.map((gear) =>
         gear.id === gearId
-          ? { ...gear, messages: [...gear.messages, message] }
+          ? { 
+              ...gear, 
+              messages: [
+                ...gear.messages, 
+                { ...message, id: crypto.randomUUID() }
+              ] 
+            }
           : gear,
       ),
     );
@@ -77,6 +83,7 @@ export default function Home() {
         <div className="w-1/3 border-l pl-4">
           <ChatSidebar
             gearId={selectedGear}
+            initialMessages={gears.find(gear => gear.id === selectedGear)?.messages || []}
             onMessageSent={(message) =>
               handleMessageSent(selectedGear, message)
             }

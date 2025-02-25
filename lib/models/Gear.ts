@@ -3,6 +3,7 @@
 export type Role = "user" | "assistant" | "system";
 
 export interface Message {
+  id?: string;
   role: Role;
   content: string;
 }
@@ -34,6 +35,24 @@ export class Gear {
     return gear;
   }
 
+  static async findById(id: string): Promise<Gear | null> {
+    // In a real implementation, this would fetch from a database
+    // For now, return dummy data
+    const dummyData: GearData = {
+      id,
+      outputUrls: [`https://example.com/gear/${id}/output`],
+      messages: [
+        { id: crypto.randomUUID(), role: "system", content: "You are a helpful assistant gear." },
+        { id: crypto.randomUUID(), role: "user", content: "Process this data please." },
+        { id: crypto.randomUUID(), role: "assistant", content: "I've processed your data successfully." }
+      ],
+      createdAt: Date.now() - 86400000, // 1 day ago
+      updatedAt: Date.now() - 3600000,  // 1 hour ago
+    };
+    
+    return new Gear(dummyData);
+  }
+
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     // await kv.set(`gear:${this.data.id}`, this.data)
@@ -57,7 +76,7 @@ export class Gear {
   }
 
   addMessage(role: Role, content: string) {
-    this.data.messages.push({ role, content });
+    this.data.messages.push({ id: crypto.randomUUID(), role, content });
   }
 
   addOutputUrl(url: string) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useChat } from "ai/react";
+import { useChat, Message } from "ai/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,28 +23,44 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   initialMessages,
   onMessageSent,
 }) => {
+  // Convert initialMessages to include id if they don't have one
+  const formattedInitialMessages: Message[] = initialMessages.map(msg => ({
+    id: crypto.randomUUID(),
+    role: msg.role as "system" | "user" | "assistant" | "data",
+    content: msg.content
+  }));
+
   const { messages, input, handleInputChange, handleSubmit, setMessages } =
     useChat({
       api: `/api/chat/${gearId}`,
-      initialMessages,
+      initialMessages: formattedInitialMessages,
     });
   const [isTyping, setIsTyping] = useState(false);
 
   useEffect(() => {
     // Update messages when initialMessages change (e.g., when selecting a different gear)
-    setMessages(initialMessages);
+    const formatted: Message[] = initialMessages.map(msg => ({
+      id: crypto.randomUUID(),
+      role: msg.role as "system" | "user" | "assistant" | "data",
+      content: msg.content
+    }));
+    setMessages(formatted);
   }, [initialMessages, setMessages]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsTyping(true);
-    handleSubmit(e).then(() => {
+    handleSubmit(e);
+    
+    // Since handleSubmit may not return a Promise in some versions, we'll use
+    // a timeout to update the UI state after a short delay
+    setTimeout(() => {
       setIsTyping(false);
       if (messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         onMessageSent(lastMessage);
       }
-    });
+    }, 500);
   };
 
   return (

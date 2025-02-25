@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import {
@@ -13,6 +12,8 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  Connection,
+  BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -27,11 +28,11 @@ export default function PatchPage() {
   const params = useParams();
   const patchId = params.patchId as string;
   const [gearMessages, setGearMessages] = useState<{ role: string; content: string }[]>([]);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
   const onConnect = useCallback(
-    (params) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges],
   );
 
@@ -57,7 +58,7 @@ export default function PatchPage() {
             >
               <Controls />
               <MiniMap />
-              <Background variant="dots" gap={12} size={1} />
+              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
             </ReactFlow>
           </CardContent>
         </Card>
