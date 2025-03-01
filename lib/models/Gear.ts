@@ -1,5 +1,8 @@
 // import { kv } from '@vercel/kv'
 
+// In-memory store for development purposes
+const gearStore = new Map<string, GearData>();
+
 export type Role = "user" | "assistant" | "system";
 
 export interface Message {
@@ -40,27 +43,33 @@ export class Gear {
     await gear.save();
     return gear;
   }
+  
+  static async deleteById(id: string): Promise<boolean> {
+    if (gearStore.has(id)) {
+      return gearStore.delete(id);
+    }
+    return false;
+  }
 
   static async findById(id: string): Promise<Gear | null> {
-    // In a real implementation, this would fetch from a database
-    // For now, return dummy data
-    const dummyData: GearData = {
-      id,
-      outputUrls: [`https://example.com/gear/${id}/output`],
-      messages: [
-        { id: crypto.randomUUID(), role: "system", content: "You are a helpful assistant gear." },
-        { id: crypto.randomUUID(), role: "user", content: "Process this data please." },
-        { id: crypto.randomUUID(), role: "assistant", content: "I've processed your data successfully." }
-      ],
-      createdAt: Date.now() - 86400000, // 1 day ago
-      updatedAt: Date.now() - 3600000,  // 1 hour ago
-    };
+    // Check if gear exists in memory store
+    if (gearStore.has(id)) {
+      return new Gear(gearStore.get(id)!);
+    }
     
-    return new Gear(dummyData);
+    // Return null if gear not found
+    return null;
+  }
+  
+  // Get all gears from the store
+  static async findAll(): Promise<Gear[]> {
+    return Array.from(gearStore.values()).map(data => new Gear(data));
   }
 
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
+    // Store in memory map
+    gearStore.set(this.data.id, { ...this.data });
     // await kv.set(`gear:${this.data.id}`, this.data)
   }
 
