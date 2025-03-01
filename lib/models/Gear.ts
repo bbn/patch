@@ -89,7 +89,7 @@ export class Gear {
     this.data.messages.push({ id: crypto.randomUUID(), role, content });
   }
 
-  setInput(source: string, input: GearInput): Promise<GearOutput> {
+  processInput(source: string, input: GearInput): Promise<GearOutput> {
     if (!this.data.inputs) {
       this.data.inputs = {};
     }

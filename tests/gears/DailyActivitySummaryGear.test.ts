@@ -182,13 +182,13 @@ describe('DailyActivitySummaryGear', () => {
 
   test('processes Slack and JIRA data into a daily activity summary', async () => {
     // Set the Slack data
-    await gear.setInput('slack', {
+    await gear.processInput('slack', {
       channelHistory: slackChannelData,
       usersInfo: slackUsersData
     });
     
     // Set the JIRA data (which automatically triggers processing)
-    const result = await gear.setInput('jira', {
+    const result = await gear.processInput('jira', {
       recentIssues: jiraIssuesData,
       activityLog: jiraActivityData
     });
@@ -210,8 +210,8 @@ describe('DailyActivitySummaryGear', () => {
       // as the exact response format may vary
       console.log('Full response from real LLM:', result);
     }
-  // Increase timeout to 30 seconds for LLM API calls
-  }, 30000);
+  // Increase timeout to 60 seconds for LLM API calls
+  }, 60000);
   
   test('processes data with sequential input addition', async () => {
     // Reset mock counts if needed
@@ -220,14 +220,14 @@ describe('DailyActivitySummaryGear', () => {
     }
     
     // First set just Slack data
-    const slackOnlyResult = await gear.setInput('slack', {
+    const slackOnlyResult = await gear.processInput('slack', {
       channelHistory: slackChannelData,
       usersInfo: slackUsersData
     });
     expect(slackOnlyResult).toContain('Daily Activity Summary');
     
     // Now set JIRA data
-    const combinedResult = await gear.setInput('jira', {
+    const combinedResult = await gear.processInput('jira', {
       recentIssues: jiraIssuesData,
       activityLog: jiraActivityData
     });
@@ -238,7 +238,7 @@ describe('DailyActivitySummaryGear', () => {
       expect(gear['processWithLLM']).toHaveBeenCalledTimes(2);
     }
   // Increase timeout for LLM API calls
-  }, 30000);
+  }, 60000);
   
   test('processes data using source parameter in process', async () => {
     // Reset the mock counter for this test
@@ -278,13 +278,13 @@ describe('DailyActivitySummaryGear', () => {
 - Progress made on critical issues`;
     
     // Set Slack data
-    await sourceGear.setInput('slack', {
+    await sourceGear.processInput('slack', {
       channelHistory: slackChannelData,
       usersInfo: slackUsersData
     });
     
     // Set JIRA data
-    const result = await sourceGear.setInput('jira', {
+    const result = await sourceGear.processInput('jira', {
       recentIssues: jiraIssuesData,
       activityLog: jiraActivityData
     });
@@ -300,7 +300,7 @@ describe('DailyActivitySummaryGear', () => {
     expect(Object.keys(sourceGear.inputs)).toContain('slack');
     expect(Object.keys(sourceGear.inputs)).toContain('jira');
   // Increase timeout for LLM API calls
-  }, 30000);
+  }, 60000);
   
   test('maintains backward compatibility with original API', async () => {
     // Reset the mock counter for this test
@@ -364,5 +364,5 @@ describe('DailyActivitySummaryGear', () => {
     // Verify inputs dictionary is empty since we used direct input
     expect(Object.keys(compatGear.inputs)).toHaveLength(0);
   // Increase timeout for LLM API calls
-  }, 30000);
+  }, 60000);
 });
