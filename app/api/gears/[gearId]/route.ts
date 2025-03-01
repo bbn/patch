@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ gearId: string }> }
 ) {
   try {
-    const { inputMessage, source = "api" } = await req.json();
+    const { message, source } = await req.json();
     const gearId = (await params).gearId;
 
     const gear = await Gear.findById(gearId);
@@ -15,7 +15,7 @@ export async function POST(
       return new Response("Gear not found", { status: 404 });
     }
 
-    const output = await gear.processInput(source, inputMessage);
+    const output = await gear.processInput(source, message);
     
     return Response.json({ output });
   } catch (error) {
