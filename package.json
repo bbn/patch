@@ -10,7 +10,9 @@
     "test": "jest",
     "test:mock-llm": "jest -- --mock-llms",
     "test:daily": "jest tests/gears/DailyActivitySummaryGear.test.ts",
-    "test:daily:mock": "jest tests/gears/DailyActivitySummaryGear.test.ts -- --mock-llms"
+    "test:daily:mock": "jest tests/gears/DailyActivitySummaryGear.test.ts -- --mock-llms",
+    "test:chaining": "jest tests/gears/GearChaining.test.ts",
+    "test:chaining:mock": "jest tests/gears/GearChaining.test.ts -- --mock-llms"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.13",
