@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
-    "run-daily-summary": "NODE_OPTIONS=\"--require tsconfig-paths/register\" npx ts-node -P tsconfig.scripts.json tests/gears/runDailyActivityGear.ts"
+    "test:mock-llm": "jest -- --mock-llms",
+    "test:daily": "jest tests/gears/DailyActivitySummaryGear.test.ts",
+    "test:daily:mock": "jest tests/gears/DailyActivitySummaryGear.test.ts -- --mock-llms"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.13",

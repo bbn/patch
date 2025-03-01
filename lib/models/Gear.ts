@@ -16,6 +16,10 @@ export interface GearData {
   updatedAt: number;
 }
 
+// Define a type for gear input/output data
+export type GearInput = string | Record<string, unknown>;
+export type GearOutput = string | Record<string, unknown>;
+
 export class Gear {
   private data: GearData;
 
@@ -100,12 +104,12 @@ export class Gear {
     return basePrompt;
   }
 
-  userPrompt(data: any): string {
-    const formattedInput = JSON.stringify(data, null, 2);
+  userPrompt(data: GearInput): string {
+    const formattedInput = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     return `Here is the input data: ${formattedInput}`;
   }
 
-  async process(input: string) {
+  async process(input: GearInput) {
     try {
       const output = await this.processWithLLM(input);
       await this.forwardOutputToGears(output);
@@ -116,7 +120,7 @@ export class Gear {
     }
   }
 
-  private async processWithLLM(input: string): Promise<any> {
+  private async processWithLLM(input: GearInput): Promise<GearOutput> {
     try {
       const response = await fetch("/api/gears/" + this.id, {
         method: "POST",
@@ -148,7 +152,7 @@ export class Gear {
     }
   }
 
-  private async forwardOutputToGears(output: any): Promise<void> {
+  private async forwardOutputToGears(output: GearOutput): Promise<void> {
     console.log(
       `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`,
     );

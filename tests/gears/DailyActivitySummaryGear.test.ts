@@ -1,9 +1,44 @@
 import { Gear } from '@/lib/models/Gear';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateText } from 'ai';
+import { openai } from '@ai-sdk/openai';
+import * as dotenv from 'dotenv';
 
-// Mock fetch since we're processing offline
-global.fetch = jest.fn();
+// Parse command line arguments to check if we should mock LLM calls
+// Default to real responses unless explicitly asked to mock
+const mockLlm = process.argv.includes('--mock-llms');
+console.log(`Test mode: ${mockLlm ? 'Using mocked LLM responses' : 'Using real LLM calls'}`);
+
+// If we're using real LLM calls, load environment variables
+if (!mockLlm) {
+  // Load environment variables from .env files
+  const envFile = path.resolve(process.cwd(), '.env.local');
+  if (fs.existsSync(envFile)) {
+    console.log(`Loading environment from ${envFile}`);
+    const result = dotenv.config({ path: envFile });
+    console.log(`Dotenv loaded: ${result.parsed ? 'successfully' : 'failed'}`);
+    
+    // Debug loaded env vars (first few chars only for security)
+    if (result.parsed && result.parsed.OPENAI_API_KEY) {
+      console.log(`Found OPENAI_API_KEY in .env.local: ${result.parsed.OPENAI_API_KEY.substring(0, 8)}...`);
+    } else {
+      console.log('No OPENAI_API_KEY found in .env.local');
+    }
+  } else {
+    console.log(`No .env.local file found at ${envFile}`);
+    dotenv.config(); // Try default .env file
+  }
+
+  // Check if API key is set
+  console.log(`OPENAI_API_KEY in process.env: ${process.env.OPENAI_API_KEY ? 'Set' : 'Not set'}`);
+  if (process.env.OPENAI_API_KEY) {
+    console.log(`Key starts with: ${process.env.OPENAI_API_KEY.substring(0, 8)}...`);
+  }
+} else {
+  // Mock fetch since we're using mocked responses
+  global.fetch = jest.fn();
+}
 
 describe('DailyActivitySummaryGear', () => {
   let gear: Gear;
@@ -11,6 +46,7 @@ describe('DailyActivitySummaryGear', () => {
   let slackUsersData: any;
   let jiraIssuesData: any;
   let jiraActivityData: any;
+  let combinedData: any;
 
   beforeAll(() => {
     // Load fixture data
@@ -23,6 +59,18 @@ describe('DailyActivitySummaryGear', () => {
     slackUsersData = JSON.parse(fs.readFileSync(slackUsersPath, 'utf8'));
     jiraIssuesData = JSON.parse(fs.readFileSync(jiraIssuesPath, 'utf8'));
     jiraActivityData = JSON.parse(fs.readFileSync(jiraActivityPath, 'utf8'));
+
+    // Create combined data
+    combinedData = {
+      slack: {
+        channelHistory: slackChannelData,
+        usersInfo: slackUsersData
+      },
+      jira: {
+        recentIssues: jiraIssuesData,
+        activityLog: jiraActivityData
+      }
+    };
   });
 
   beforeEach(() => {
@@ -48,25 +96,20 @@ describe('DailyActivitySummaryGear', () => {
     
     gear.addMessage({ role: 'user', content: 'Format the summary in a professional, easy-to-read manner suitable for a team update.' });
 
-    // Mock the fetch implementation for the gear.processWithLLM method
-    (global.fetch as jest.Mock).mockImplementation(() => 
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({
-          content: 'Mocked LLM response for testing. This will be replaced by actual LLM response in real execution.'
+    if (mockLlm) {
+      // Mock the fetch implementation for the gear.processWithLLM method
+      (global.fetch as jest.Mock).mockImplementation(() => 
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            content: 'Mocked LLM response for testing. This will be replaced by actual LLM response in real execution.'
+          })
         })
-      })
-    );
-  });
+      );
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  test('processes Slack and JIRA data into a daily activity summary', async () => {
-    // Override processWithLLM to return our own response instead of calling an actual LLM
-    gear['processWithLLM'] = jest.fn().mockImplementation(() => {
-      return Promise.resolve(`
+      // Override processWithLLM to return a mock response
+      gear['processWithLLM'] = jest.fn().mockImplementation(() => {
+        return Promise.resolve(`
 # Daily Activity Summary - February 25, 2023
 
 ## Team Communication (Slack)
@@ -104,32 +147,74 @@ describe('DailyActivitySummaryGear', () => {
 ## Notable Achievements
 - UI design for settings page completed and passed QA
 - Root cause identified for authentication issues
-      `);
-    });
+        `);
+      });
+    } else {
+      // Override processWithLLM to call actual LLM using Vercel AI SDK
+      gear['processWithLLM'] = async (input: string) => {
+        try {
+          // Parse the input data 
+          const inputData = JSON.parse(input);
+          
+          // Log system prompt and user data for debugging
+          console.log('\nSystem prompt:', gear.systemPrompt());
+          console.log('\nUser data sample:', gear.userPrompt(inputData).substring(0, 500) + '...');
+          
+          // Make a real call to the LLM using Vercel AI SDK
+          console.log('\nCalling LLM API...');
+          
+          // Use Vercel AI SDK to generate text
+          const response = await generateText({
+            model: openai('gpt-4o-mini'),
+            messages: [
+              { 
+                role: 'system',
+                content: gear.systemPrompt()
+              },
+              {
+                role: 'user',
+                content: gear.userPrompt(inputData)
+              }
+            ]
+          });
+          
+          console.log('\nLLM processing complete.');
+          return response.text;
+        } catch (error) {
+          console.error('Error processing with LLM:', error);
+          throw error;
+        }
+      };
+    }
+  });
 
-    // Combine Slack and JIRA data as input
-    const combinedData = {
-      slack: {
-        channelHistory: slackChannelData,
-        usersInfo: slackUsersData
-      },
-      jira: {
-        recentIssues: jiraIssuesData,
-        activityLog: jiraActivityData
-      }
-    };
+  afterEach(() => {
+    if (mockLlm) {
+      jest.clearAllMocks();
+    }
+  });
 
+  test('processes Slack and JIRA data into a daily activity summary', async () => {
     // Process the data with our gear
     const result = await gear.process(JSON.stringify(combinedData));
     
     // Verify the output contains expected sections
     expect(result).toContain('Daily Activity Summary');
-    expect(result).toContain('Team Communication (Slack)');
-    expect(result).toContain('Project Status (JIRA)');
-    expect(result).toContain('Action Items');
-    expect(result).toContain('Notable Achievements');
     
-    // Verify the processWithLLM method was called once
-    expect(gear['processWithLLM']).toHaveBeenCalledTimes(1);
-  });
+    if (mockLlm) {
+      // Additional checks for mocked response
+      expect(result).toContain('Team Communication (Slack)');
+      expect(result).toContain('Project Status (JIRA)');
+      expect(result).toContain('Action Items');
+      expect(result).toContain('Notable Achievements');
+      
+      // Verify the processWithLLM method was called once
+      expect(gear['processWithLLM']).toHaveBeenCalledTimes(1);
+    } else {
+      // When using real LLM, we can only make basic checks
+      // as the exact response format may vary
+      console.log('Full response from real LLM:', result);
+    }
+  // Increase timeout to 30 seconds for LLM API calls
+  }, 30000);
 });
