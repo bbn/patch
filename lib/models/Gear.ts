@@ -14,6 +14,7 @@ export interface GearData {
   messages: Message[];
   createdAt: number;
   updatedAt: number;
+  inputs?: Record<string, GearInput>;
 }
 
 // Define a type for gear input/output data
@@ -30,6 +31,7 @@ export class Gear {
       messages: data.messages || [],
       createdAt: data.createdAt || Date.now(),
       updatedAt: data.updatedAt || Date.now(),
+      inputs: data.inputs || {},
     };
   }
 
@@ -79,8 +81,23 @@ export class Gear {
     return this.data.updatedAt;
   }
 
+  get inputs() {
+    return this.data.inputs || {};
+  }
+
   addMessage({ role, content }: { role: Role; content: string }) {
     this.data.messages.push({ id: crypto.randomUUID(), role, content });
+  }
+
+  setInput(source: string, input: GearInput): Promise<GearOutput> {
+    if (!this.data.inputs) {
+      this.data.inputs = {};
+    }
+    this.data.inputs[source] = input;
+    this.data.updatedAt = Date.now();
+    
+    // Automatically process when input is set
+    return this.process();
   }
 
   addOutputUrl(url: string) {
@@ -104,14 +121,31 @@ export class Gear {
     return basePrompt;
   }
 
-  userPrompt(data: GearInput): string {
-    const formattedInput = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    return `Here is the input data: ${formattedInput}`;
+  userPrompt(data?: GearInput): string {
+    // If data is provided directly, use it (for backward compatibility)
+    if (data !== undefined) {
+      const formattedInput = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      return `Here is the input data: ${formattedInput}`;
+    }
+    
+    // Otherwise, use all inputs from the inputs dictionary
+    const allInputs = this.data.inputs || {};
+    const formattedInputs = JSON.stringify(allInputs, null, 2);
+    return `Here are the input data sources: ${formattedInputs}`;
   }
 
-  async process(input: GearInput) {
+  async process(input?: GearInput) {
     try {
-      const output = await this.processWithLLM(input);
+      if (input !== undefined) {
+        // For backward compatibility, if input is provided directly,
+        // process just that input directly
+        const output = await this.processWithLLM(input);
+        await this.forwardOutputToGears(output);
+        return output;
+      }
+      
+      // Process all inputs from the inputs dictionary
+      const output = await this.processWithLLM();
       await this.forwardOutputToGears(output);
       return output;
     } catch (error) {
@@ -120,8 +154,14 @@ export class Gear {
     }
   }
 
-  private async processWithLLM(input: GearInput): Promise<GearOutput> {
+  private async processWithLLM(input?: GearInput): Promise<GearOutput> {
     try {
+      // In a browser environment, this would call the API
+      // For Node.js testing, we'll throw an error that should be overridden in tests
+      if (typeof window === 'undefined') {
+        throw new Error("This method should be mocked in Node.js testing environment");
+      }
+      
       const response = await fetch("/api/gears/" + this.id, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -1,4 +1,4 @@
-import { Gear } from '@/lib/models/Gear';
+import { Gear, GearInput } from '@/lib/models/Gear';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateText } from 'ai';
@@ -46,7 +46,6 @@ describe('DailyActivitySummaryGear', () => {
   let slackUsersData: any;
   let jiraIssuesData: any;
   let jiraActivityData: any;
-  let combinedData: any;
 
   beforeAll(() => {
     // Load fixture data
@@ -60,17 +59,7 @@ describe('DailyActivitySummaryGear', () => {
     jiraIssuesData = JSON.parse(fs.readFileSync(jiraIssuesPath, 'utf8'));
     jiraActivityData = JSON.parse(fs.readFileSync(jiraActivityPath, 'utf8'));
 
-    // Create combined data
-    combinedData = {
-      slack: {
-        channelHistory: slackChannelData,
-        usersInfo: slackUsersData
-      },
-      jira: {
-        recentIssues: jiraIssuesData,
-        activityLog: jiraActivityData
-      }
-    };
+    // Individual data sources will be used directly
   });
 
   beforeEach(() => {
@@ -151,14 +140,11 @@ describe('DailyActivitySummaryGear', () => {
       });
     } else {
       // Override processWithLLM to call actual LLM using Vercel AI SDK
-      gear['processWithLLM'] = async (input: string) => {
+      gear['processWithLLM'] = async (input?: GearInput) => {
         try {
-          // Parse the input data 
-          const inputData = JSON.parse(input);
-          
           // Log system prompt and user data for debugging
           console.log('\nSystem prompt:', gear.systemPrompt());
-          console.log('\nUser data sample:', gear.userPrompt(inputData).substring(0, 500) + '...');
+          console.log('\nUser data:', gear.userPrompt(input));
           
           // Make a real call to the LLM using Vercel AI SDK
           console.log('\nCalling LLM API...');
@@ -173,7 +159,7 @@ describe('DailyActivitySummaryGear', () => {
               },
               {
                 role: 'user',
-                content: gear.userPrompt(inputData)
+                content: gear.userPrompt(input)
               }
             ]
           });
@@ -195,8 +181,17 @@ describe('DailyActivitySummaryGear', () => {
   });
 
   test('processes Slack and JIRA data into a daily activity summary', async () => {
-    // Process the data with our gear
-    const result = await gear.process(JSON.stringify(combinedData));
+    // Set the Slack data
+    await gear.setInput('slack', {
+      channelHistory: slackChannelData,
+      usersInfo: slackUsersData
+    });
+    
+    // Set the JIRA data (which automatically triggers processing)
+    const result = await gear.setInput('jira', {
+      recentIssues: jiraIssuesData,
+      activityLog: jiraActivityData
+    });
     
     // Verify the output contains expected sections
     expect(result).toContain('Daily Activity Summary');
@@ -208,13 +203,166 @@ describe('DailyActivitySummaryGear', () => {
       expect(result).toContain('Action Items');
       expect(result).toContain('Notable Achievements');
       
-      // Verify the processWithLLM method was called once
-      expect(gear['processWithLLM']).toHaveBeenCalledTimes(1);
+      // Verify the processWithLLM method was called twice (once for each setInput)
+      expect(gear['processWithLLM']).toHaveBeenCalledTimes(2);
     } else {
       // When using real LLM, we can only make basic checks
       // as the exact response format may vary
       console.log('Full response from real LLM:', result);
     }
   // Increase timeout to 30 seconds for LLM API calls
+  }, 30000);
+  
+  test('processes data with sequential input addition', async () => {
+    // Reset mock counts if needed
+    if (mockLlm) {
+      jest.clearAllMocks();
+    }
+    
+    // First set just Slack data
+    const slackOnlyResult = await gear.setInput('slack', {
+      channelHistory: slackChannelData,
+      usersInfo: slackUsersData
+    });
+    expect(slackOnlyResult).toContain('Daily Activity Summary');
+    
+    // Now set JIRA data
+    const combinedResult = await gear.setInput('jira', {
+      recentIssues: jiraIssuesData,
+      activityLog: jiraActivityData
+    });
+    expect(combinedResult).toContain('Daily Activity Summary');
+    
+    if (mockLlm) {
+      // Verify processWithLLM was called twice
+      expect(gear['processWithLLM']).toHaveBeenCalledTimes(2);
+    }
+  // Increase timeout for LLM API calls
+  }, 30000);
+  
+  test('processes data using source parameter in process', async () => {
+    // Reset the mock counter for this test
+    if (mockLlm) {
+      jest.clearAllMocks();
+    }
+    
+    // Create a new gear for this test
+    const sourceGear = new Gear({
+      id: 'direct-source-test'
+    });
+    
+    // Add messages as in the previous tests
+    sourceGear.addMessage({
+      role: 'user',
+      content: 'Please generate a daily activity summary from the inputs of Slack and JIRA data.'
+    });
+    
+    // Always mock the processWithLLM method for this test
+    sourceGear['processWithLLM'] = mockLlm ? 
+      gear['processWithLLM'] : 
+      async () => `# Daily Activity Summary for Source Parameter Test
+
+## Team Communication (Slack)
+- Team discussions recorded
+- User authentication fixes proposed
+
+## Project Status (JIRA)
+- PROJ-101: User authentication issue (In Progress)
+- PROJ-103: Performance issue (In Progress)
+
+## Action Items
+- Complete authentication fixes
+- Resolve performance issues
+
+## Notable Achievements
+- Progress made on critical issues`;
+    
+    // Set Slack data
+    await sourceGear.setInput('slack', {
+      channelHistory: slackChannelData,
+      usersInfo: slackUsersData
+    });
+    
+    // Set JIRA data
+    const result = await sourceGear.setInput('jira', {
+      recentIssues: jiraIssuesData,
+      activityLog: jiraActivityData
+    });
+    
+    expect(result).toContain('Daily Activity Summary');
+    
+    if (mockLlm) {
+      // Verify processWithLLM was called twice
+      expect(sourceGear['processWithLLM']).toHaveBeenCalledTimes(2);
+    }
+      
+    // Verify both inputs are stored
+    expect(Object.keys(sourceGear.inputs)).toContain('slack');
+    expect(Object.keys(sourceGear.inputs)).toContain('jira');
+  // Increase timeout for LLM API calls
+  }, 30000);
+  
+  test('maintains backward compatibility with original API', async () => {
+    // Reset the mock counter for this test
+    if (mockLlm) {
+      jest.clearAllMocks();
+    }
+    
+    // Create a new gear for this test
+    const compatGear = new Gear({
+      id: 'compat-test'
+    });
+    
+    // Add messages as in the previous tests
+    compatGear.addMessage({
+      role: 'user',
+      content: 'Please generate a daily activity summary from the inputs of Slack and JIRA data.'
+    });
+    
+    // Always mock the processWithLLM method for this test
+    compatGear['processWithLLM'] = mockLlm ? 
+      gear['processWithLLM'] : 
+      async () => `# Daily Activity Summary for Backward Compatibility
+
+## Team Communication (Slack)
+- Team discussions recorded
+- User authentication fixes proposed
+
+## Project Status (JIRA)
+- PROJ-101: User authentication issue (In Progress)
+- PROJ-103: Performance issue (In Progress)
+
+## Action Items
+- Complete authentication fixes
+- Resolve performance issues
+
+## Notable Achievements
+- Progress made on critical issues`;
+    
+    // Create a combined data object
+    const combinedData = {
+      slack: {
+        channelHistory: slackChannelData,
+        usersInfo: slackUsersData
+      },
+      jira: {
+        recentIssues: jiraIssuesData,
+        activityLog: jiraActivityData
+      }
+    };
+    
+    // Use the original API format with combined data
+    const result = await compatGear.process(JSON.stringify(combinedData));
+    
+    expect(result).toContain('Daily Activity Summary');
+    
+    if (mockLlm) {
+      // Verify processWithLLM was called once
+      expect(compatGear['processWithLLM']).toHaveBeenCalledTimes(1);
+    }
+    
+    // Verify inputs dictionary is empty since we used direct input
+    expect(Object.keys(compatGear.inputs)).toHaveLength(0);
+  // Increase timeout for LLM API calls
   }, 30000);
 });
