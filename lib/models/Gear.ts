@@ -75,7 +75,7 @@ export class Gear {
     return this.data.updatedAt;
   }
 
-  addMessage(role: Role, content: string) {
+  addMessage({ role, content }: { role: Role; content: string }) {
     this.data.messages.push({ id: crypto.randomUUID(), role, content });
   }
 

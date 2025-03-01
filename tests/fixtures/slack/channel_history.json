@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U01B2ABCDEF",
+      "text": "I've just pushed the fixes for the user authentication bug. PR is ready for review.",
+      "ts": "1614267592.001400"
+    },
+    {
+      "type": "message",
+      "user": "U02C3GHIJKL",
+      "text": "Great! I'll take a look at it this afternoon.",
+      "ts": "1614267642.001500"
+    },
+    {
+      "type": "message",
+      "user": "U03D4MNOPQR",
+      "text": "Team stand-up at 10:30 AM today. Don't forget to update your JIRA tickets before the meeting.",
+      "ts": "1614268242.001600"
+    },
+    {
+      "type": "message",
+      "user": "U04E5STUVWX",
+      "text": "Has anyone looked at the performance issue in the production environment?",
+      "ts": "1614269142.001700"
+    },
+    {
+      "type": "message",
+      "user": "U01B2ABCDEF",
+      "text": "I'm investigating it now. Looks like it might be related to the database indexing.",
+      "ts": "1614269242.001800"
+    }
+  ],
+  "has_more": false,
+  "pin_count": 0,
+  "channel_actions_ts": null,
+  "channel_actions_count": 0
+}

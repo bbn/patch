@@ -1,0 +1,117 @@
+{
+  "issues": [
+    {
+      "id": "10001",
+      "key": "PROJ-101",
+      "fields": {
+        "summary": "User authentication fails on mobile devices",
+        "description": "Users are unable to log in using the mobile app. The authentication flow works fine on desktop browsers.",
+        "status": {
+          "name": "In Progress",
+          "statusCategory": {
+            "name": "In Progress"
+          }
+        },
+        "assignee": {
+          "displayName": "John Doe",
+          "emailAddress": "john.doe@example.com"
+        },
+        "priority": {
+          "name": "High"
+        },
+        "updated": "2023-02-25T09:12:43.000+0000"
+      }
+    },
+    {
+      "id": "10002",
+      "key": "PROJ-102",
+      "fields": {
+        "summary": "Implement password reset functionality",
+        "description": "Create a secure password reset flow that sends a temporary link to the user's email address.",
+        "status": {
+          "name": "Todo",
+          "statusCategory": {
+            "name": "To Do"
+          }
+        },
+        "assignee": {
+          "displayName": "Sarah Wilson",
+          "emailAddress": "sarah.wilson@example.com"
+        },
+        "priority": {
+          "name": "Medium"
+        },
+        "updated": "2023-02-24T15:37:21.000+0000"
+      }
+    },
+    {
+      "id": "10003",
+      "key": "PROJ-103",
+      "fields": {
+        "summary": "Performance issue in production environment",
+        "description": "Dashboard page takes longer than 10 seconds to load in production. Works fine in development and staging environments.",
+        "status": {
+          "name": "In Progress",
+          "statusCategory": {
+            "name": "In Progress"
+          }
+        },
+        "assignee": {
+          "displayName": "John Doe",
+          "emailAddress": "john.doe@example.com"
+        },
+        "priority": {
+          "name": "Critical"
+        },
+        "updated": "2023-02-25T10:45:07.000+0000"
+      }
+    },
+    {
+      "id": "10004",
+      "key": "PROJ-104",
+      "fields": {
+        "summary": "Create UI design for new settings page",
+        "description": "Design a modern and user-friendly interface for the user settings page that includes profile management, notification preferences, and privacy settings.",
+        "status": {
+          "name": "Done",
+          "statusCategory": {
+            "name": "Done"
+          }
+        },
+        "assignee": {
+          "displayName": "Jane Smith",
+          "emailAddress": "jane.smith@example.com"
+        },
+        "priority": {
+          "name": "Medium"
+        },
+        "updated": "2023-02-24T12:18:36.000+0000"
+      }
+    },
+    {
+      "id": "10005",
+      "key": "PROJ-105",
+      "fields": {
+        "summary": "Set up weekly team stand-up meetings",
+        "description": "Organize daily stand-up meetings for the development team to discuss progress, blockers, and priorities.",
+        "status": {
+          "name": "Done",
+          "statusCategory": {
+            "name": "Done"
+          }
+        },
+        "assignee": {
+          "displayName": "Robert Jackson",
+          "emailAddress": "robert.jackson@example.com"
+        },
+        "priority": {
+          "name": "Low"
+        },
+        "updated": "2023-02-23T16:54:12.000+0000"
+      }
+    }
+  ],
+  "total": 5,
+  "maxResults": 50,
+  "startAt": 0
+}

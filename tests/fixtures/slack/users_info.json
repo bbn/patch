@@ -1,0 +1,48 @@
+{
+  "users": [
+    {
+      "id": "U01B2ABCDEF",
+      "team_id": "T1234567890",
+      "name": "john.doe",
+      "real_name": "John Doe",
+      "profile": {
+        "display_name": "John Doe",
+        "email": "john.doe@example.com",
+        "title": "Senior Developer"
+      }
+    },
+    {
+      "id": "U02C3GHIJKL",
+      "team_id": "T1234567890",
+      "name": "jane.smith",
+      "real_name": "Jane Smith",
+      "profile": {
+        "display_name": "Jane Smith",
+        "email": "jane.smith@example.com",
+        "title": "Project Manager"
+      }
+    },
+    {
+      "id": "U03D4MNOPQR",
+      "team_id": "T1234567890",
+      "name": "robert.jackson",
+      "real_name": "Robert Jackson",
+      "profile": {
+        "display_name": "Robert Jackson",
+        "email": "robert.jackson@example.com",
+        "title": "Team Lead"
+      }
+    },
+    {
+      "id": "U04E5STUVWX",
+      "team_id": "T1234567890",
+      "name": "sarah.wilson",
+      "real_name": "Sarah Wilson",
+      "profile": {
+        "display_name": "Sarah Wilson",
+        "email": "sarah.wilson@example.com",
+        "title": "QA Engineer"
+      }
+    }
+  ]
+}
