@@ -202,6 +202,10 @@ export class Gear {
   }
 
   private async forwardOutputToGears(output: GearOutput): Promise<void> {
+    // If there are no output gears, just return early
+    if (!this.outputUrls || this.outputUrls.length === 0) {
+      return;
+    }
     console.log(
       `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`,
     );
