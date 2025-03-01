@@ -165,12 +165,37 @@ export class Gear {
 
   private async processWithLLM(input?: GearInput): Promise<GearOutput> {
     try {
-      // In a browser environment, this would call the API
-      // For Node.js testing, we'll throw an error that should be overridden in tests
+      // For tests, this method should be mocked unless the actual LLM call is desired
       if (typeof window === 'undefined') {
-        throw new Error("This method should be mocked in Node.js testing environment");
+        // In a Node.js environment (tests), we should use the Vercel AI SDK
+        try {
+          // Dynamically import the Vercel AI SDK to avoid requiring it at runtime in the browser
+          const { generateText } = await import('ai');
+          const { openai } = await import('@ai-sdk/openai');
+          
+          // Use the Vercel AI SDK to generate text
+          const response = await generateText({
+            model: openai('gpt-4o-mini'),
+            messages: [
+              { 
+                role: 'system',
+                content: this.systemPrompt()
+              },
+              {
+                role: 'user',
+                content: this.userPrompt(input)
+              }
+            ]
+          });
+          
+          return response.text;
+        } catch (error) {
+          // If the real API call fails or the SDK is not available, throw an error
+          throw new Error("Error using AI SDK. If testing, use --mock-llms flag to mock LLM calls.");
+        }
       }
       
+      // Browser environment - use the API endpoint
       const response = await fetch("/api/gears/" + this.id, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
