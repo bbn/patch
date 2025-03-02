@@ -1,15 +1,9 @@
 // import { kv } from '@vercel/kv'
+import { GearChat } from "./GearChat";
+import { Message, Role, GearInput, GearOutput } from "./types";
 
 // In-memory store for development purposes
 const gearStore = new Map<string, GearData>();
-
-export type Role = "user" | "assistant" | "system";
-
-export interface Message {
-  id?: string;
-  role: Role;
-  content: string;
-}
 
 export interface GearData {
   id: string;
@@ -21,12 +15,9 @@ export interface GearData {
   output?: GearOutput;
 }
 
-// Define a type for gear input/output data
-export type GearInput = string | Record<string, unknown>;
-export type GearOutput = string | Record<string, unknown>;
-
 export class Gear {
   private data: GearData;
+  private chat: GearChat;
 
   constructor(data: Partial<GearData> & { id: string }) {
     this.data = {
@@ -38,6 +29,7 @@ export class Gear {
       inputs: data.inputs || {},
       output: data.output,
     };
+    this.chat = new GearChat(this.data.messages, this.data.id);
   }
 
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
@@ -101,7 +93,8 @@ export class Gear {
   }
 
   async addMessage({ role, content }: { role: Role; content: string }) {
-    this.data.messages.push({ id: crypto.randomUUID(), role, content });
+    await this.chat.addMessage({ role, content });
+    // Note: we don't need to push to data.messages since the GearChat maintains the same reference
     await this.save();
   }
 
@@ -112,8 +105,6 @@ export class Gear {
     this.data.inputs[source] = input;
     this.data.updatedAt = Date.now();
     await this.save();
-    
-    // Automatically process when input is set
     return this.process();
   }
 
@@ -132,10 +123,10 @@ export class Gear {
   systemPrompt(): string {
     const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
 
-  Here are this Gear's instructional messages:
-  ${JSON.stringify(this.data.messages, null, 2)}
+    Here are this Gear's instructional messages:
+    ${JSON.stringify(this.data.messages, null, 2)}
 
-  Please process the input data and generate an output according to the instruction.`;
+    Please process the input data and generate an output according to the instruction.`;
 
     return basePrompt;
   }
@@ -176,7 +167,7 @@ export class Gear {
       throw error;
     }
   }
-
+  
   private async processWithLLM(input?: GearInput): Promise<GearOutput> {
     try {
       // For tests, this method should be mocked unless the actual LLM call is desired
@@ -203,14 +194,14 @@ export class Gear {
           });
           
           return response.text;
-        } catch (error) {
+        } catch {
           // If the real API call fails or the SDK is not available, throw an error
           throw new Error("Error using AI SDK. If testing, use --mock-llms flag to mock LLM calls.");
         }
       }
       
       // Browser environment - use the API endpoint
-      const response = await fetch("/api/gears/" + this.id, {
+      const response = await fetch("/api/gears/" + this.id + "/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

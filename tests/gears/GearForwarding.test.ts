@@ -1,4 +1,5 @@
-import { Gear, GearOutput, GearInput } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/Gear';
+import { GearOutput, GearInput } from '@/lib/models/types';
 import { generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import * as dotenv from 'dotenv';

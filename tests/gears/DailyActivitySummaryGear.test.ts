@@ -1,4 +1,5 @@
-import { Gear, GearInput } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/Gear';
+import { GearInput } from '@/lib/models/types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { generateText } from 'ai';

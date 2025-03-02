@@ -1,6 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText } from 'ai';
-import { Gear, Message } from "@/lib/models/Gear";
+import { Gear } from "@/lib/models/Gear";
+import { Message } from "@/lib/models/types";
 import { NextRequest } from 'next/server';
 
 export const runtime = "edge";
