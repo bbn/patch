@@ -250,7 +250,7 @@ export default function PatchPage() {
   }, [patchId, patchName, nodes, edges]);
 
   return (
-    <div className="container mx-auto p-4 flex h-screen">
+    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
       <div className="flex-1 pr-4">
         <Card className="h-full">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -289,7 +289,7 @@ export default function PatchPage() {
         </Card>
       </div>
       {selectedNode && (
-        <div className="w-1/3 border-l pl-4">
+        <div className="w-1/3 border-l pl-4 h-full flex flex-col">
           <div className="mb-4">
             <h3 className="text-lg font-semibold">
               {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
@@ -298,11 +298,13 @@ export default function PatchPage() {
               ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
             </p>
           </div>
-          <ChatSidebar
-            gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
-            initialMessages={gearMessages}
-            onMessageSent={handleMessageSent}
-          />
+          <div className="flex-grow overflow-hidden">
+            <ChatSidebar
+              gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
+              initialMessages={gearMessages}
+              onMessageSent={handleMessageSent}
+            />
+          </div>
         </div>
       )}
     </div>

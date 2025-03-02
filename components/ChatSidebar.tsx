@@ -64,11 +64,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   };
 
   return (
-    <Card className="w-full h-full flex flex-col">
-      <CardHeader>
+    <Card className="w-full h-full flex flex-col overflow-hidden">
+      <CardHeader className="py-3">
         <CardTitle>Chat with Gear {gearId}</CardTitle>
       </CardHeader>
-      <CardContent className="flex-grow overflow-y-auto">
+      <CardContent className="flex-grow overflow-y-auto pb-2">
         {messages.map((m, index) => (
           <div
             key={index}
@@ -89,7 +89,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
         )}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="py-3 border-t">
         <form onSubmit={onSubmit} className="flex w-full space-x-2">
           <Input
             value={input}
