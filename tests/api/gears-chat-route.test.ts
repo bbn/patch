@@ -1,6 +1,7 @@
 import { POST } from '@/app/api/gears/[gearId]/chat/route';
 import { Gear } from '@/lib/models/Gear';
-import { streamText } from 'ai';
+import { GearChat } from '@/lib/models/GearChat';
+import { createIdGenerator, streamText } from 'ai';
 import { NextRequest } from 'next/server';
 
 jest.mock('@/lib/models/Gear', () => ({
@@ -8,19 +9,38 @@ jest.mock('@/lib/models/Gear', () => ({
   Gear: { findById: jest.fn() }
 }));
 
+jest.mock('@/lib/models/GearChat', () => {
+  return {
+    GearChat: jest.fn().mockImplementation(() => ({
+      getMessages: jest.fn().mockReturnValue([]),
+      addMessage: jest.fn().mockImplementation(async (msg) => ({
+        id: 'test-message-id',
+        ...msg
+      }))
+    }))
+  };
+});
+
 jest.mock('ai', () => ({
-  streamText: jest.fn()
+  streamText: jest.fn(),
+  createIdGenerator: jest.fn().mockReturnValue(() => 'generated-id')
 }));
 
 describe('Gears Chat API Route', () => {
   let mockStreamResponse: any;
+  let mockOnFinish: Function;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOnFinish = jest.fn();
     mockStreamResponse = {
       toDataStreamResponse: jest.fn().mockReturnValue(new Response('test stream'))
     };
-    (streamText as jest.Mock).mockReturnValue(mockStreamResponse);
+    (streamText as jest.Mock).mockImplementation((options) => {
+      // Store the onFinish callback so we can call it in tests
+      mockOnFinish = options.onFinish;
+      return mockStreamResponse;
+    });
   });
 
   const createRequest = (body: any) => new NextRequest(
@@ -45,6 +65,7 @@ describe('Gears Chat API Route', () => {
 
   it('streams chat response', async () => {
     const mockGear = {
+      id: 'test-gear',
       messages: [
         { role: 'system', content: 'You are a helpful assistant.' },
         { role: 'user', content: 'Previous message' }
@@ -59,13 +80,17 @@ describe('Gears Chat API Route', () => {
     );
     
     expect(streamText).toHaveBeenCalledWith(expect.objectContaining({
-      messages: [
+      messages: expect.arrayContaining([
         { role: 'system', content: 'System prompt for the gear' },
-        { role: 'system', content: 'You are a helpful assistant.' },
-        { role: 'user', content: 'Previous message' },
         { role: 'user', content: 'New message' }
-      ]
+      ]),
+      experimental_generateMessageId: expect.any(Function)
     }));
+    
+    expect(createIdGenerator).toHaveBeenCalledWith({
+      prefix: 'gear',
+      size: 16,
+    });
     expect(mockStreamResponse.toDataStreamResponse).toHaveBeenCalled();
   });
 
@@ -75,5 +100,77 @@ describe('Gears Chat API Route', () => {
     }).rejects.toThrow();
     
     expect(Gear.findById).not.toHaveBeenCalled();
+  });
+
+  it('adds the user message to GearChat', async () => {
+    const mockGearChatInstance = {
+      getMessages: jest.fn().mockReturnValue([]),
+      addMessage: jest.fn().mockImplementation(async (msg) => ({
+        id: 'test-message-id',
+        ...msg
+      }))
+    };
+    
+    (GearChat as jest.Mock).mockImplementation(() => mockGearChatInstance);
+    
+    const mockGear = {
+      id: 'test-gear',
+      messages: [],
+      systemPrompt: jest.fn().mockReturnValue('System prompt')
+    };
+    
+    (Gear.findById as jest.Mock).mockResolvedValue(mockGear);
+
+    await POST(
+      createRequest({ messages: [{ role: 'user', content: 'Test message' }] }), 
+      { params: testParams }
+    );
+
+    // Verify that the user message was added to GearChat
+    expect(mockGearChatInstance.addMessage).toHaveBeenCalledWith({
+      role: 'user',
+      content: 'Test message'
+    });
+  });
+
+  it('persists the assistant response after streaming completes', async () => {
+    const mockGearChatInstance = {
+      getMessages: jest.fn().mockReturnValue([]),
+      addMessage: jest.fn().mockImplementation(async (msg) => ({
+        id: 'test-message-id',
+        ...msg
+      }))
+    };
+    
+    (GearChat as jest.Mock).mockImplementation(() => mockGearChatInstance);
+    
+    const mockGear = {
+      id: 'test-gear',
+      messages: [],
+      systemPrompt: jest.fn().mockReturnValue('System prompt')
+    };
+    
+    (Gear.findById as jest.Mock).mockResolvedValue(mockGear);
+
+    await POST(
+      createRequest({ messages: [{ role: 'user', content: 'Test message' }] }), 
+      { params: testParams }
+    );
+
+    // Simulate the onFinish callback being called after streaming completes
+    await mockOnFinish({
+      response: {
+        messages: [
+          { role: 'user', content: 'Test message' },
+          { role: 'assistant', content: 'This is the assistant response' }
+        ]
+      }
+    });
+
+    // Verify that the assistant message was added to GearChat
+    expect(mockGearChatInstance.addMessage).toHaveBeenCalledWith({
+      role: 'assistant',
+      content: 'This is the assistant response'
+    });
   });
 });

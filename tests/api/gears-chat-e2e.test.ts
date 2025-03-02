@@ -1,0 +1,121 @@
+import { Gear } from '@/lib/models/Gear';
+import { Message } from '@/lib/models/types';
+import { createIdGenerator, streamText } from 'ai';
+
+// Mock the AI SDK
+jest.mock('ai', () => ({
+  streamText: jest.fn(),
+  createIdGenerator: jest.fn().mockReturnValue(() => 'generated-id'),
+  openai: jest.fn().mockReturnValue('mocked-model')
+}));
+
+// We'll use the actual Gear and GearChat models for this test
+jest.mock('@ai-sdk/openai', () => ({
+  openai: jest.fn().mockReturnValue('openai-model')
+}));
+
+describe('Gear Chat End-to-End', () => {
+  let mockStreamResponse: any;
+  let mockOnFinish: Function;
+  let testGear: Gear;
+  const gearId = 'test-e2e-gear';
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    
+    // Setup the mockStreamResponse
+    mockOnFinish = jest.fn();
+    mockStreamResponse = {
+      toDataStreamResponse: jest.fn().mockReturnValue(new Response('test stream'))
+    };
+    
+    (streamText as jest.Mock).mockImplementation((options) => {
+      // Store the onFinish callback to simulate completion
+      mockOnFinish = options.onFinish;
+      return mockStreamResponse;
+    });
+    
+    // Clean up any existing test gear
+    await Gear.deleteById(gearId);
+    
+    // Create a fresh test gear
+    testGear = await Gear.create({
+      id: gearId,
+      messages: [
+        { id: 'system-1', role: 'system', content: 'You are a helpful assistant.' }
+      ]
+    });
+  });
+  
+  afterEach(async () => {
+    // Clean up the test gear
+    await Gear.deleteById(gearId);
+  });
+
+  it('should persist messages through multiple chat interactions', async () => {
+    // Import the route handler
+    const { POST } = await import('@/app/api/gears/[gearId]/chat/route');
+    
+    // Define request creator helper
+    const createRequest = (messages: Message[]) => {
+      return {
+        json: () => Promise.resolve({ messages }),
+        headers: new Headers(),
+        method: 'POST'
+      } as any;
+    };
+    
+    // Mock params
+    const params = Promise.resolve({ gearId });
+    
+    // First user message
+    const userMessage1 = { role: 'user' as const, content: 'Hello, how are you?' };
+    await POST(createRequest([userMessage1]), { params });
+    
+    // Simulate response from AI
+    const assistantMessage1 = { role: 'assistant' as const, content: 'I am doing well, thank you!' };
+    await mockOnFinish({
+      response: {
+        messages: [userMessage1, assistantMessage1]
+      }
+    });
+    
+    // Check that messages were saved
+    const gearAfterFirstMessage = await Gear.findById(gearId);
+    expect(gearAfterFirstMessage).not.toBeNull();
+    expect(gearAfterFirstMessage!.messages.length).toBe(3); // System + user + assistant
+    expect(gearAfterFirstMessage!.messages[1].role).toBe('user');
+    expect(gearAfterFirstMessage!.messages[1].content).toBe('Hello, how are you?');
+    expect(gearAfterFirstMessage!.messages[2].role).toBe('assistant');
+    expect(gearAfterFirstMessage!.messages[2].content).toBe('I am doing well, thank you!');
+    
+    // Second user message
+    const userMessage2 = { role: 'user' as const, content: 'What is your favorite color?' };
+    await POST(createRequest([userMessage2]), { params });
+    
+    // Simulate response from AI
+    const assistantMessage2 = { role: 'assistant' as const, content: 'I do not have preferences, but I can help with colors!' };
+    await mockOnFinish({
+      response: {
+        messages: [userMessage2, assistantMessage2]
+      }
+    });
+    
+    // Check that all messages were saved (conversation history maintained)
+    const gearAfterSecondMessage = await Gear.findById(gearId);
+    expect(gearAfterSecondMessage).not.toBeNull();
+    expect(gearAfterSecondMessage!.messages.length).toBe(5); // System + 2 user + 2 assistant
+    
+    // Verify first exchange
+    expect(gearAfterSecondMessage!.messages[1].role).toBe('user');
+    expect(gearAfterSecondMessage!.messages[1].content).toBe('Hello, how are you?');
+    expect(gearAfterSecondMessage!.messages[2].role).toBe('assistant');
+    expect(gearAfterSecondMessage!.messages[2].content).toBe('I am doing well, thank you!');
+    
+    // Verify second exchange
+    expect(gearAfterSecondMessage!.messages[3].role).toBe('user');
+    expect(gearAfterSecondMessage!.messages[3].content).toBe('What is your favorite color?');
+    expect(gearAfterSecondMessage!.messages[4].role).toBe('assistant');
+    expect(gearAfterSecondMessage!.messages[4].content).toBe('I do not have preferences, but I can help with colors!');
+  });
+});
