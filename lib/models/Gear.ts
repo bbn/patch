@@ -18,6 +18,7 @@ export interface GearData {
   createdAt: number;
   updatedAt: number;
   inputs?: Record<string, GearInput>;
+  output?: GearOutput;
 }
 
 // Define a type for gear input/output data
@@ -35,6 +36,7 @@ export class Gear {
       createdAt: data.createdAt || Date.now(),
       updatedAt: data.updatedAt || Date.now(),
       inputs: data.inputs || {},
+      output: data.output,
     };
   }
 
@@ -94,29 +96,37 @@ export class Gear {
     return this.data.inputs || {};
   }
 
-  addMessage({ role, content }: { role: Role; content: string }) {
-    this.data.messages.push({ id: crypto.randomUUID(), role, content });
+  get output() {
+    return this.data.output;
   }
 
-  processInput(source: string, input: GearInput): Promise<GearOutput> {
+  async addMessage({ role, content }: { role: Role; content: string }) {
+    this.data.messages.push({ id: crypto.randomUUID(), role, content });
+    await this.save();
+  }
+
+  async processInput(source: string, input: GearInput): Promise<GearOutput> {
     if (!this.data.inputs) {
       this.data.inputs = {};
     }
     this.data.inputs[source] = input;
     this.data.updatedAt = Date.now();
+    await this.save();
     
     // Automatically process when input is set
     return this.process();
   }
 
-  addOutputUrl(url: string) {
+  async addOutputUrl(url: string) {
     if (!this.data.outputUrls.includes(url)) {
       this.data.outputUrls.push(url);
+      await this.save();
     }
   }
 
-  removeOutputUrl(url: string) {
+  async removeOutputUrl(url: string) {
     this.data.outputUrls = this.data.outputUrls.filter((u) => u !== url);
+    await this.save();
   }
 
   systemPrompt(): string {
@@ -149,12 +159,16 @@ export class Gear {
         // For backward compatibility, if input is provided directly,
         // process just that input directly
         const output = await this.processWithLLM(input);
+        this.data.output = output;
+        await this.save();
         await this.forwardOutputToGears(output);
         return output;
       }
       
       // Process all inputs from the inputs dictionary
       const output = await this.processWithLLM();
+      this.data.output = output;
+      await this.save();
       await this.forwardOutputToGears(output);
       return output;
     } catch (error) {
