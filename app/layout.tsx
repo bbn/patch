@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Patch.land",
+  title: "patch.land",
   description: "Graphical reactive programming environment",
 };
 
@@ -33,7 +33,7 @@ export default function RootLayout({
         <header className="border-b py-2">
           <div className="container mx-auto flex items-center">
             <h1 className="text-xl font-bold mr-8">
-              <Link href="/">Patch.land</Link>
+              <Link href="/">patch.land</Link>
             </h1>
             <nav className="flex space-x-6">
               <Link href="/" className="hover:text-blue-600 transition-colors">
