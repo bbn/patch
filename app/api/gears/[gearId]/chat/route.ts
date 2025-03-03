@@ -16,22 +16,12 @@ export async function POST(
     const { messages } = await request.json();
     const gearId = resolvedParams.gearId;
 
-    // Try to find the gear, or create a new one if it doesn't exist
+    // Try to find the gear
     let gear = await Gear.findById(gearId);
     
     if (!gear) {
-      console.log("Gear not found, creating a new one with id:", gearId);
-      // Create a new gear with this ID
-      gear = await Gear.create({
-        id: gearId,
-        messages: [],
-        outputUrls: []
-      });
-      
-      if (!gear) {
-        console.error("Failed to create gear:", gearId);
-        return new Response("Failed to create gear", { status: 500 });
-      }
+      console.log("Gear not found:", gearId);
+      return new Response("Gear not found", { status: 404 });
     }
 
     // Create GearChat instance
@@ -87,9 +77,13 @@ export async function POST(
     return result.toDataStreamResponse();
   } catch (error) {
     console.error("Error in chat API:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    
+    // Extract the actual error message
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    
+    return Response.json(
+      { error: errorMessage },
+      { status: 500 }
     );
   }
 }

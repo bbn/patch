@@ -95,10 +95,14 @@ describe('Gears Chat API Route', () => {
   });
 
   it('handles JSON parsing errors', async () => {
-    await expect(async () => {
-      await POST(createRequest('invalid-json'), { params: testParams });
-    }).rejects.toThrow();
+    const response = await POST(createRequest('invalid-json'), { params: testParams });
     
+    expect(response.status).toBe(500);
+    const data = await response.json();
+    
+    // The error message might be different across environments or Next.js versions,
+    // so we just check that there is an error message
+    expect(data.error).toBeTruthy();
     expect(Gear.findById).not.toHaveBeenCalled();
   });
 
