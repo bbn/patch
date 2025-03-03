@@ -17,6 +17,7 @@ import {
   Node,
   Edge,
   BackgroundVariant,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
@@ -32,6 +33,7 @@ export default function PatchPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<{ gearId: string; label: string }>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [saving, setSaving] = useState(false);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
   // Load patch data
   useEffect(() => {
@@ -114,28 +116,8 @@ export default function PatchPage() {
     [setEdges, patchId, nodes],
   );
 
-  // Handle node selection
-  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    setSelectedNode(node.id);
-    
-    // Load messages for this gear
-    const gearId = node.data?.gearId;
-    if (gearId) {
-      Gear.findById(gearId).then(gear => {
-        if (gear) {
-          setGearMessages(gear.messages);
-        } else {
-          setGearMessages([]);
-        }
-      }).catch(error => {
-        console.error("Error loading gear messages:", error);
-        setGearMessages([]);
-      });
-    }
-  }, []);
-
-  // Handle adding a new gear node
-  const addGearNode = useCallback(async () => {
+  // Handle adding a new gear node at a specific position
+  const addGearNode = useCallback(async (position = { x: Math.random() * 300, y: Math.random() * 300 }) => {
     try {
       setSaving(true);
       
@@ -168,10 +150,7 @@ export default function PatchPage() {
       const newNode: PatchNode = {
         id: nodeId,
         type: 'default',
-        position: { 
-          x: Math.random() * 300, 
-          y: Math.random() * 300 
-        },
+        position,
         data: {
           gearId: gear.id,
           label: `Gear ${gear.id.split('-')[1]}`
@@ -210,6 +189,78 @@ export default function PatchPage() {
       setSaving(false);
     }
   }, [patchId, setNodes]);
+
+  // Handle node selection
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node.id);
+    
+    // Load messages for this gear
+    const gearId = node.data?.gearId;
+    if (gearId) {
+      Gear.findById(gearId).then(gear => {
+        if (gear) {
+          setGearMessages(gear.messages);
+        } else {
+          setGearMessages([]);
+        }
+      }).catch(error => {
+        console.error("Error loading gear messages:", error);
+        setGearMessages([]);
+      });
+    }
+  }, []);
+  
+  // Handle canvas click to add a new gear
+  const onPaneClick = useCallback((event: React.MouseEvent) => {
+    // Don't create a gear if:
+    // 1. The reactFlowInstance is not available
+    // 2. We're in the middle of making a connection
+    if (!reactFlowInstance) return;
+    
+    // Check if we're connecting nodes (look for connection elements in the DOM)
+    const connectingLine = document.querySelector('.react-flow__connection-path');
+    if (connectingLine) {
+      // If a connection line is present, we're in the middle of making a connection,
+      // so don't create a new gear
+      return;
+    }
+    
+    // Get the current viewport transform
+    const { zoom } = reactFlowInstance.getViewport();
+    
+    // Get the reactflow container element
+    const reactFlowBounds = event.currentTarget.getBoundingClientRect();
+    
+    // Calculate relative position within the canvas
+    const relativeX = event.clientX - reactFlowBounds.left;
+    const relativeY = event.clientY - reactFlowBounds.top;
+    
+    // Calculate the exact position in flow coordinates
+    const position = reactFlowInstance.screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY
+    });
+    
+    // Node dimensions
+    const nodeWidth = 160;
+    const nodeHeight = 80;
+    
+    // Add gear at the exact position, centered on cursor
+    addGearNode({
+      x: position.x - (nodeWidth / 2),
+      y: position.y - (nodeHeight / 2)
+    });
+    
+    // If this is the first node, ensure we don't zoom in
+    if (nodes.length === 0) {
+      // Set a small timeout to let the node be added first
+      setTimeout(() => {
+        if (reactFlowInstance) {
+          reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
+        }
+      }, 50);
+    }
+  }, [reactFlowInstance, addGearNode, nodes.length]);
 
   // Handle message sent to a gear
   const handleMessageSent = async (message: { role: string; content: string }) => {
@@ -284,6 +335,14 @@ export default function PatchPage() {
     }
   }, [patchId, patchName, nodes, edges]);
 
+  // Initialize the flow once with a consistent zoom level
+  useEffect(() => {
+    if (reactFlowInstance && nodes.length === 0) {
+      // Set a default viewport for empty canvas
+      reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
+    }
+  }, [reactFlowInstance, nodes.length]);
+
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
       <div className="flex-1 pr-4">
@@ -291,13 +350,6 @@ export default function PatchPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{patchName}</CardTitle>
             <div className="flex space-x-2">
-              <Button 
-                onClick={addGearNode} 
-                variant="outline"
-                disabled={saving}
-              >
-                Add Gear
-              </Button>
               <Button 
                 onClick={savePatch}
                 disabled={saving}
@@ -307,19 +359,25 @@ export default function PatchPage() {
             </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onNodeClick={onNodeClick}
-              fitView
-            >
-              <Controls />
-              <MiniMap />
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-            </ReactFlow>
+            <div className="h-full w-full">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                onInit={setReactFlowInstance}
+                nodesDraggable={true}
+                fitView={false}
+                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+              >
+                <Controls />
+                <MiniMap />
+                <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+              </ReactFlow>
+            </div>
           </CardContent>
         </Card>
       </div>

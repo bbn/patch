@@ -61,3 +61,16 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* ReactFlow Custom Styling */
+.react-flow__pane {
+  cursor: default !important;
+}
+
+.react-flow__node {
+  cursor: pointer !important;
+}
+
+.react-flow__handle {
+  cursor: crosshair !important;
+}
