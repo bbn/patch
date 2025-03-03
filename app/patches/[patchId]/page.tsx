@@ -141,9 +141,26 @@ export default function PatchPage() {
       
       // Create a new gear
       const gearId = `gear-${Date.now()}`;
+      
+      // Add some initial instructions to the gear
+      const initialMessages = [
+        {
+          role: "system",
+          content: "You are a Gear that processes inputs and produces outputs. You can be configured with instructions."
+        },
+        {
+          role: "user",
+          content: "How do I use this Gear?"
+        },
+        {
+          role: "assistant",
+          content: "You can send me instructions or data, and I'll process them according to my configuration. Add specific instructions about what you want me to do with inputs."
+        }
+      ];
+      
       const gear = await Gear.create({
         id: gearId,
-        messages: [],
+        messages: initialMessages,
       });
       
       // Create a node representation
@@ -168,6 +185,24 @@ export default function PatchPage() {
       const patch = await Patch.findById(patchId);
       if (patch) {
         await patch.addNode(newNode);
+      }
+      
+      // Save to backend right away
+      try {
+        const response = await fetch(`/api/gears/${gearId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            source: 'initialization',
+            message: 'Gear created and initialized'
+          }),
+        });
+        
+        if (!response.ok) {
+          console.warn("Pre-initialization call failed, but continuing");
+        }
+      } catch (err) {
+        console.warn("Failed to pre-initialize gear, but continuing:", err);
       }
     } catch (error) {
       console.error("Error adding gear node:", error);

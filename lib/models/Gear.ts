@@ -5,6 +5,18 @@ import { Message, Role, GearInput, GearOutput } from "./types";
 // In-memory store for development purposes
 const gearStore = new Map<string, GearData>();
 
+// Initialize with some test gears if empty
+if (gearStore.size === 0) {
+  const defaultGear = {
+    id: "gear-default",
+    outputUrls: [],
+    messages: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+  gearStore.set(defaultGear.id, defaultGear);
+}
+
 export interface GearData {
   id: string;
   outputUrls: string[];
@@ -51,19 +63,89 @@ export class Gear {
       return new Gear(gearStore.get(id)!);
     }
     
+    // If not in memory, try to get from localStorage (in browser environment)
+    if (typeof window !== 'undefined') {
+      try {
+        const savedGears = localStorage.getItem('gears');
+        if (savedGears) {
+          const gears = JSON.parse(savedGears);
+          const gearData = gears.find((g: {id: string}) => g.id === id);
+          
+          if (gearData) {
+            // Add to memory store and return
+            const gear = new Gear(gearData);
+            gearStore.set(id, { ...gearData });
+            return gear;
+          }
+        }
+      } catch (error) {
+        console.error("Error loading gear from localStorage:", error);
+      }
+    }
+    
     // Return null if gear not found
     return null;
   }
   
   // Get all gears from the store
   static async findAll(): Promise<Gear[]> {
-    return Array.from(gearStore.values()).map(data => new Gear(data));
+    // Get gears from memory store
+    const memoryGears = Array.from(gearStore.values()).map(data => new Gear(data));
+    
+    // In browser environment, also try to get from localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const savedGearsStr = localStorage.getItem('gears');
+        if (savedGearsStr) {
+          const savedGears = JSON.parse(savedGearsStr);
+          
+          // For any gear in localStorage but not in memory, add it to memory and to the result
+          for (const gearData of savedGears) {
+            if (!gearStore.has(gearData.id)) {
+              gearStore.set(gearData.id, gearData);
+              memoryGears.push(new Gear(gearData));
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error loading gears from localStorage:", error);
+      }
+    }
+    
+    return memoryGears;
   }
 
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
+    
     // Store in memory map
     gearStore.set(this.data.id, { ...this.data });
+    
+    // Save to localStorage in browser environment
+    if (typeof window !== 'undefined') {
+      try {
+        // Get existing gears
+        const savedGearsStr = localStorage.getItem('gears');
+        const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
+        
+        // Find index of this gear if it exists
+        const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
+        
+        if (gearIndex >= 0) {
+          // Update existing gear
+          savedGears[gearIndex] = { ...this.data };
+        } else {
+          // Add new gear
+          savedGears.push({ ...this.data });
+        }
+        
+        // Save back to localStorage
+        localStorage.setItem('gears', JSON.stringify(savedGears));
+      } catch (error) {
+        console.error("Error saving gear to localStorage:", error);
+      }
+    }
+    
     // await kv.set(`gear:${this.data.id}`, this.data)
   }
 
@@ -201,30 +283,105 @@ export class Gear {
       }
       
       // Browser environment - use the API endpoint
-      const response = await fetch("/api/gears/" + this.id + "/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          messages: [
-            {
-              role: "system",
-              content: this.systemPrompt()
-            },
-            {
-              role: "user", 
-              content: this.userPrompt(input)
+      console.log(`Calling LLM API for gear ${this.id}`);
+      
+      // Construct messages for the chat
+      const messages = [
+        {
+          role: "system",
+          content: this.systemPrompt()
+        },
+        {
+          role: "user", 
+          content: this.userPrompt(input)
+        }
+      ];
+      
+      // We need to capture the streaming response
+      // This will be a complex implementation that uses the Vercel AI SDK
+      // For now, let's use a simpler approach that uses text/event-stream
+      const controller = new AbortController();
+      const signal = controller.signal;
+      
+      try {
+        console.log(`Sending request to /api/gears/${this.id}/chat`);
+        const response = await fetch(`/api/gears/${this.id}/chat`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ messages }),
+          signal
+        });
+        
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`LLM API error: ${response.status} ${text}`);
+          throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
+        }
+        
+        // Check if we have a streaming response
+        if (response.headers.get("content-type")?.includes("text/event-stream")) {
+          // Handle streaming response
+          console.log("Got streaming response, processing events");
+          
+          // Simple accumulator for the streamed content
+          let accumulatedContent = "";
+          
+          // Create a reader for the response body
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+          
+          while (reader) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            // Decode the chunk
+            const chunk = decoder.decode(value);
+            
+            // Simple parsing of SSE format
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6);
+                if (data === "[DONE]") {
+                  // End of stream
+                  break;
+                }
+                
+                try {
+                  // Parse the JSON in the data
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === "text" && parsed.value) {
+                    accumulatedContent += parsed.value;
+                  }
+                } catch (e) {
+                  console.warn("Error parsing SSE data:", e);
+                }
+              }
             }
-          ]
-        }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to process with LLM");
+          }
+          
+          console.log("Final accumulated content:", accumulatedContent);
+          return accumulatedContent;
+        } else {
+          // Regular JSON response
+          console.log("Got regular JSON response");
+          const result = await response.json();
+          
+          if (!result.content && !result.text) {
+            throw new Error("Received empty content from LLM response");
+          }
+          
+          return result.content || result.text;
+        }
+      } catch (error) {
+        console.error("Error in LLM API call:", error);
+        throw error;
+      } finally {
+        // Clean up the controller
+        controller.abort();
       }
-      const result = await response.json();
-      if (!result.content) {
-        throw new Error("Received empty content from LLM response");
-      }
-      return result.content;
     } catch (error) {
       console.error("Error processing with LLM:", error);
       throw error;

@@ -7,12 +7,27 @@ export async function POST(
   { params }: { params: Promise<{ gearId: string }> }
 ) {
   try {
+    const resolvedParams = await params;
+    console.log("Gear API called with gearId:", resolvedParams.gearId);
     const { message, source } = await req.json();
-    const gearId = (await params).gearId;
+    const gearId = resolvedParams.gearId;
 
-    const gear = await Gear.findById(gearId);
+    // Try to find the gear, or create a new one if it doesn't exist
+    let gear = await Gear.findById(gearId);
+    
     if (!gear) {
-      return new Response("Gear not found", { status: 404 });
+      console.log("Gear not found, creating a new one with id:", gearId);
+      // Create a new gear with this ID
+      gear = await Gear.create({
+        id: gearId,
+        messages: [],
+        outputUrls: []
+      });
+      
+      if (!gear) {
+        console.error("Failed to create gear:", gearId);
+        return new Response("Failed to create gear", { status: 500 });
+      }
     }
 
     const output = await gear.processInput(source, message);
