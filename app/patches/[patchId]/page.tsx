@@ -84,6 +84,16 @@ export default function PatchPage() {
     async (connection: Connection) => {
       if (!connection.source || !connection.target) return;
       
+      // Record that a connection was just made to prevent creating a gear
+      setRecentConnection({
+        timestamp: Date.now(),
+        source: connection.source,
+        target: connection.target
+      });
+      
+      // Reset isConnecting flag
+      setIsConnecting(false);
+      
       const newEdge: Edge = {
         ...connection,
         id: `e${connection.source}-${connection.target}`,
@@ -113,7 +123,7 @@ export default function PatchPage() {
         console.error("Error saving edge:", error);
       }
     },
-    [setEdges, patchId, nodes],
+    [setEdges, patchId, nodes, setRecentConnection, setIsConnecting],
   );
 
   // Handle adding a new gear node at a specific position
@@ -210,30 +220,45 @@ export default function PatchPage() {
     }
   }, []);
   
+  // Track if we're currently connecting nodes
+  const [isConnecting, setIsConnecting] = useState(false);
+  
+  // Track recent edge connections to prevent adding gear when connection completes
+  const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
+  
+  // Function to check if connection was just made
+  const wasConnectionJustMade = useCallback(() => {
+    if (!recentConnection) return false;
+    
+    // Connection is considered recent if it happened within last 500ms
+    const isRecent = Date.now() - recentConnection.timestamp < 500;
+    
+    // Clean up old connections
+    if (!isRecent) {
+      setRecentConnection(null);
+    }
+    
+    return isRecent;
+  }, [recentConnection]);
+  
   // Handle canvas click to add a new gear
   const onPaneClick = useCallback((event: React.MouseEvent) => {
     // Don't create a gear if:
     // 1. The reactFlowInstance is not available
     // 2. We're in the middle of making a connection
+    // 3. We just completed a connection
     if (!reactFlowInstance) return;
     
     // Check if we're connecting nodes (look for connection elements in the DOM)
     const connectingLine = document.querySelector('.react-flow__connection-path');
-    if (connectingLine) {
+    if (connectingLine || isConnecting || wasConnectionJustMade()) {
       // If a connection line is present, we're in the middle of making a connection,
-      // so don't create a new gear
+      // or we just completed a connection, so don't create a new gear
       return;
     }
     
-    // Get the current viewport transform
-    const { zoom } = reactFlowInstance.getViewport();
-    
     // Get the reactflow container element
     const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-    
-    // Calculate relative position within the canvas
-    const relativeX = event.clientX - reactFlowBounds.left;
-    const relativeY = event.clientY - reactFlowBounds.top;
     
     // Calculate the exact position in flow coordinates
     const position = reactFlowInstance.screenToFlowPosition({
@@ -260,7 +285,7 @@ export default function PatchPage() {
         }
       }, 50);
     }
-  }, [reactFlowInstance, addGearNode, nodes.length]);
+  }, [reactFlowInstance, addGearNode, nodes.length, isConnecting, wasConnectionJustMade]);
 
   // Handle message sent to a gear
   const handleMessageSent = async (message: { role: string; content: string }) => {
@@ -342,6 +367,19 @@ export default function PatchPage() {
       reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
     }
   }, [reactFlowInstance, nodes.length]);
+  
+  // Handler for when connection interaction starts
+  const onConnectStart = useCallback(() => {
+    setIsConnecting(true);
+  }, [setIsConnecting]);
+  
+  // Handler for when connection interaction is canceled/aborted
+  const onConnectEnd = useCallback(() => {
+    // Use a small delay to ensure we don't reset too early
+    setTimeout(() => {
+      setIsConnecting(false);
+    }, 100);
+  }, [setIsConnecting]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
@@ -366,6 +404,8 @@ export default function PatchPage() {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
                 onNodeClick={onNodeClick}
                 onPaneClick={onPaneClick}
                 onInit={setReactFlowInstance}
