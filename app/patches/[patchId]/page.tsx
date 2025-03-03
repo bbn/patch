@@ -34,6 +34,12 @@ export default function PatchPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [saving, setSaving] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  
+  // Track if we're currently connecting nodes
+  const [isConnecting, setIsConnecting] = useState(false);
+  
+  // Track recent edge connections to prevent adding gear when connection completes
+  const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
 
   // Load patch data
   useEffect(() => {
@@ -78,6 +84,21 @@ export default function PatchPage() {
     
     loadPatch();
   }, [patchId, setNodes, setEdges]);
+
+  // Function to check if connection was just made
+  const wasConnectionJustMade = useCallback(() => {
+    if (!recentConnection) return false;
+    
+    // Connection is considered recent if it happened within last 500ms
+    const isRecent = Date.now() - recentConnection.timestamp < 500;
+    
+    // Clean up old connections
+    if (!isRecent) {
+      setRecentConnection(null);
+    }
+    
+    return isRecent;
+  }, [recentConnection]);
 
   // Handle connecting nodes
   const onConnect = useCallback(
@@ -219,27 +240,6 @@ export default function PatchPage() {
       });
     }
   }, []);
-  
-  // Track if we're currently connecting nodes
-  const [isConnecting, setIsConnecting] = useState(false);
-  
-  // Track recent edge connections to prevent adding gear when connection completes
-  const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
-  
-  // Function to check if connection was just made
-  const wasConnectionJustMade = useCallback(() => {
-    if (!recentConnection) return false;
-    
-    // Connection is considered recent if it happened within last 500ms
-    const isRecent = Date.now() - recentConnection.timestamp < 500;
-    
-    // Clean up old connections
-    if (!isRecent) {
-      setRecentConnection(null);
-    }
-    
-    return isRecent;
-  }, [recentConnection]);
   
   // Handle canvas click to add a new gear
   const onPaneClick = useCallback((event: React.MouseEvent) => {
