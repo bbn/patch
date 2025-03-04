@@ -473,14 +473,34 @@ export default function PatchPage() {
         // If the message was from the assistant, a label may have been generated
         // Update the node's label from the gear
         if (message.role === "assistant") {
-          // Refetch the gear to get the updated label
-          const updatedGear = await Gear.findById(gearId as string);
+          console.log("UI DEBUG: Assistant message detected, checking for updated label");
+          
+          // Refetch the gear to get the updated label - IMPORTANT: use the API directly to ensure we get fresh data
+          console.log(`UI DEBUG: Refetching gear ${gearId} to get updated label directly from API`);
+          const freshResponse = await fetch(`/api/gears/${gearId}`);
+          
+          let updatedGear = null;
+          if (freshResponse.ok) {
+            updatedGear = await freshResponse.json();
+            console.log(`UI DEBUG: Fresh API data for gear:`, updatedGear);
+          } else {
+            console.log(`UI DEBUG: Failed to get fresh gear data from API, falling back to Gear.findById`);
+            updatedGear = await Gear.findById(gearId as string);
+          }
+          
+          console.log(`UI DEBUG: Refetched gear, label = "${updatedGear?.label}"`);
+          
           if (updatedGear && updatedGear.label) {
+            console.log(`UI DEBUG: Updating node ${selectedNode} label to "${updatedGear.label}"`);
+            
             // Update the node's label in the UI
-            setNodes(prev => 
-              prev.map(n => {
+            setNodes(prev => {
+              console.log("UI DEBUG: Current nodes before update:", prev);
+              
+              const newNodes = prev.map(n => {
                 if (n.id === selectedNode) {
                   // Update the node's label
+                  console.log(`UI DEBUG: Found node ${n.id}, updating label from "${n.data.label}" to "${updatedGear.label}"`);
                   return {
                     ...n,
                     data: {
@@ -490,11 +510,17 @@ export default function PatchPage() {
                   };
                 }
                 return n;
-              })
-            );
+              });
+              
+              console.log("UI DEBUG: Nodes after update:", newNodes);
+              return newNodes;
+            });
             
             // Mark data as modified to trigger a save
+            console.log("UI DEBUG: Setting dataModified = true");
             setDataModified(true);
+          } else {
+            console.log(`UI DEBUG: No valid label found on refetched gear:`, updatedGear);
           }
         }
       }

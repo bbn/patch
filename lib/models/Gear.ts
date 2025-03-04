@@ -222,6 +222,11 @@ export class Gear {
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     
+    // Debug log when saving with a label
+    if (this.data.label) {
+      console.log(`LABEL DEBUG: save() called with label = "${this.data.label}"`);
+    }
+    
     if (typeof window !== 'undefined') {
       // Client-side: Use the API endpoint
       try {
@@ -230,6 +235,8 @@ export class Gear {
         
         if (checkResponse.ok) {
           // Update existing gear
+          console.log(`LABEL DEBUG: Updating existing gear, data has label = "${this.data.label || 'none'}"`);
+          
           const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -238,9 +245,13 @@ export class Gear {
           
           if (!updateResponse.ok) {
             console.warn(`Failed to update gear ${this.data.id}:`, await updateResponse.text());
+          } else {
+            console.log(`LABEL DEBUG: Successfully updated gear with new data`);
           }
         } else {
           // Create new gear
+          console.log(`LABEL DEBUG: Creating new gear, data has label = "${this.data.label || 'none'}"`);
+          
           const createResponse = await fetch('/api/gears', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -590,6 +601,8 @@ export class Gear {
   }
 
   async addMessage({ role, content }: { role: Role; content: string }) {
+    console.log(`LABEL DEBUG: addMessage called with role ${role}`);
+    
     await this.chat.addMessage({ role, content });
     // Note: we don't need to push to data.messages since the GearChat maintains the same reference
     await this.save();
@@ -639,9 +652,30 @@ export class Gear {
 
     // Generate a new label if this completes a message exchange (user then assistant)
     if (role === 'assistant' && this.data.messages.length >= 2) {
+      console.log(`LABEL DEBUG: Detected assistant message following other messages`);
       const previousMessage = this.data.messages[this.data.messages.length - 2];
+      console.log(`LABEL DEBUG: Previous message role: ${previousMessage.role}`);
+      
       if (previousMessage.role === 'user') {
-        await this.generateLabel();
+        console.log(`LABEL DEBUG: Found message exchange pattern (user→assistant), calling generateLabel()`);
+        const newLabel = await this.generateLabel();
+        console.log(`LABEL DEBUG: generateLabel() returned: "${newLabel}"`);
+        
+        // Log current gear state after label generation
+        console.log(`LABEL DEBUG: After label generation, gear label = "${this.data.label}"`);
+        
+        // Get the saved gear to make sure the label was persisted
+        if (typeof window !== 'undefined') {
+          try {
+            const checkResponse = await fetch(`/api/gears/${this.data.id}`);
+            if (checkResponse.ok) {
+              const serverGear = await checkResponse.json();
+              console.log(`LABEL DEBUG: Server gear label after save: "${serverGear.label}"`);
+            }
+          } catch (err) {
+            console.warn("Error checking server gear label:", err);
+          }
+        }
       }
     }
     
@@ -654,6 +688,9 @@ export class Gear {
   
   async generateLabel(): Promise<string> {
     try {
+      console.log(`LABEL DEBUG: Generating label for gear ${this.id}`);
+      console.log(`LABEL DEBUG: Current messages:`, this.data.messages);
+      
       // Generate a concise label based on the gear's messages
       const prompt = `Based on this conversation, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
 
@@ -666,15 +703,22 @@ Here is the conversation:
 ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 `;
 
+      console.log(`LABEL DEBUG: Sending prompt for label generation:`, prompt.substring(0, 200) + '...');
+      
       // Use the LLM to generate a label
       const response = await this.processWithSpecialPrompt(prompt);
+      console.log(`LABEL DEBUG: Got raw response for label:`, response);
       
       // Clean the response if needed (remove quotes, etc.)
       const cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+      console.log(`LABEL DEBUG: Cleaned label: "${cleanedLabel}"`);
       
       // Update the label
       this.data.label = cleanedLabel;
+      console.log(`LABEL DEBUG: Set gear.data.label = "${this.data.label}"`);
+      
       await this.save();
+      console.log(`LABEL DEBUG: Saved gear with new label "${this.data.label}"`);
       
       return cleanedLabel;
     } catch (error) {

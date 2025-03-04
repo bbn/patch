@@ -77,6 +77,7 @@ export async function GET(
       createdAt: gear.createdAt,
       updatedAt: gear.updatedAt,
       exampleInputs: gear.exampleInputs,
+      label: gear.label,
     });
   } catch (error) {
     console.error("Error getting gear:", error);
@@ -128,6 +129,13 @@ export async function PUT(
       console.log(`PUT API: Updating exampleInputs for gear ${gearId}`);
       // Replace example inputs using setter method
       await gear.setExampleInputs(updates.exampleInputs);
+      updated = true;
+    }
+    
+    if (updates.label !== undefined) {
+      console.log(`PUT API: Updating label for gear ${gearId} to "${updates.label}"`);
+      // Update the label
+      await gear.setLabel(updates.label);
       updated = true;
     }
     
