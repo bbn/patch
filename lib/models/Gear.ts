@@ -522,6 +522,8 @@ export class Gear {
     }
     
     try {
+      // Get output directly from LLM without going through the process method
+      // to avoid forwarding to output gears when processing examples
       const output = await this.processWithLLM(example.input);
       
       // Update the example with the new output
@@ -565,6 +567,8 @@ export class Gear {
     
     for (const example of this.data.exampleInputs) {
       try {
+        // Get output directly from LLM without going through the process method
+        // to avoid forwarding to output gears when processing examples
         const output = await this.processWithLLM(example.input);
         
         // Update the example with the new output
@@ -759,6 +763,30 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         // Normal response - just clean and trim
         cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
         console.log("LABEL DEBUG: Normal response cleaning:", cleanedLabel);
+      }
+      
+      // Fix any unexpected escaping (like backslashes) in the label
+      cleanedLabel = cleanedLabel.replace(/\\+/g, '');
+      console.log(`LABEL DEBUG: Label after escape character cleanup: "${cleanedLabel}"`);
+      
+      // Ensure we're not getting JSON-like responses with quotes
+      if (cleanedLabel.includes('"') && (cleanedLabel.startsWith('{') || cleanedLabel.startsWith('['))) {
+        try {
+          // If it's valid JSON, try to extract a string from it
+          const parsed = JSON.parse(cleanedLabel);
+          if (typeof parsed === 'string') {
+            cleanedLabel = parsed;
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // Try to get the first string value from the object
+            const firstValue = Object.values(parsed).find(v => typeof v === 'string');
+            if (firstValue) {
+              cleanedLabel = firstValue;
+            }
+          }
+        } catch (e) {
+          // Not valid JSON, continue with current value
+          console.warn("LABEL DEBUG: Failed to parse potential JSON label:", e);
+        }
       }
       
       console.log(`LABEL DEBUG: Cleaned label: "${cleanedLabel}"`);
@@ -1203,7 +1231,16 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     for (const url of this.outputUrls) {
       const newMessageId = crypto.randomUUID();
       try {
-        const response = await fetch(url, {
+        // Ensure the URL is absolute by checking if it's a relative URL
+        let fullUrl = url;
+        if (url.startsWith('/')) {
+          // Convert relative URL to absolute URL using the origin
+          const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          fullUrl = `${origin}${url}`;
+          console.log(`Converting relative URL ${url} to absolute URL ${fullUrl}`);
+        }
+        
+        const response = await fetch(fullUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
