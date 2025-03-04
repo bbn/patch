@@ -20,9 +20,11 @@ export async function POST(
     let gear = await Gear.findById(gearId);
     
     if (!gear) {
-      console.log("Gear not found:", gearId);
+      console.log("Chat API: Gear not found:", gearId);
       return new Response("Gear not found", { status: 404 });
     }
+    
+    console.log(`Chat API: Found gear with ${gear.messages.length} messages`);
 
     // Create GearChat instance
     const gearChat = new GearChat(gear.messages, gearId);
@@ -46,6 +48,8 @@ export async function POST(
       // Include the latest user message
       ...(messages || []),
     ];
+    
+    console.log(`Chat API: Sending ${allMessages.length} messages to LLM`);
 
     console.log("Processing chat with messages:", JSON.stringify(allMessages));
 

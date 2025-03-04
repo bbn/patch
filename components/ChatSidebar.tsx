@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useChat } from "ai/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -11,17 +12,38 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+
+import { ExampleInputPanel } from "./ExampleInputPanel";
+import { ExampleInput } from "@/lib/models/Gear";
 
 interface ChatSidebarProps {
   gearId: string;
   initialMessages: { role: string; content: string }[];
   onMessageSent: (message: { role: string; content: string }) => void;
+  exampleInputs: ExampleInput[];
+  onAddExample: (name: string, input: string) => Promise<void>;
+  onUpdateExample: (id: string, name: string, input: string) => Promise<void>;
+  onDeleteExample: (id: string) => Promise<void>;
+  onProcessExample: (id: string) => Promise<void>;
+  onProcessAllExamples: () => Promise<void>;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   gearId,
   initialMessages,
   onMessageSent,
+  exampleInputs,
+  onAddExample,
+  onUpdateExample,
+  onDeleteExample,
+  onProcessExample,
+  onProcessAllExamples,
 }) => {
   // Format initialMessages for the useChat hook
   const formattedInitialMessages = initialMessages.map(msg => ({
@@ -36,8 +58,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     id: `chat-${gearId}`,
     initialMessages: formattedInitialMessages,
     onResponse: (response) => {
-      // We won't handle the response here, but this could be used
-      // for custom handling of specific response codes or headers
+      if (!response.ok) {
+        console.warn(`Chat API error: ${response.status} ${response.statusText}`);
+      }
     },
     onFinish: (message) => {
       // When the AI response is complete, send it to the parent component
@@ -70,45 +93,90 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     });
   };
 
+  const [activeTab, setActiveTab] = useState<'chat' | 'examples'>('chat');
+
   return (
-    <Card className="w-full h-full flex flex-col overflow-hidden">
-      <CardHeader className="py-3">
-        <CardTitle>Chat with Gear {gearId}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex-grow overflow-y-auto pb-2">
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`mb-4 ${m.role === "user" ? "text-right" : "text-left"}`}
+    <div className="w-full h-full flex flex-col border rounded-md">
+      {/* Header with tabs */}
+      <div className="p-4 border-b flex justify-between items-center">
+        <h3 className="font-semibold">Gear {gearId}</h3>
+        <div className="flex">
+          <Button
+            variant={activeTab === 'chat' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('chat')}
+            size="sm"
+            className="rounded-r-none"
           >
-            <span
-              className={`inline-block p-2 rounded-lg ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
-            >
-              {m.content}
-            </span>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="text-left">
-            <span className="inline-block p-2 rounded-lg bg-gray-200 text-black">
-              AI is thinking...
-            </span>
-          </div>
-        )}
-      </CardContent>
-      <CardFooter className="py-3 border-t">
-        <form onSubmit={handleFormSubmit} className="flex w-full space-x-2">
-          <Input
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Type your message..."
-            className="flex-grow"
-          />
-          <Button type="submit" disabled={isLoading}>
-            Send
+            Chat
           </Button>
-        </form>
-      </CardFooter>
-    </Card>
+          <Button
+            variant={activeTab === 'examples' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('examples')}
+            size="sm" 
+            className="rounded-l-none"
+          >
+            Examples
+          </Button>
+        </div>
+      </div>
+
+      {/* Chat Tab */}
+      {activeTab === 'chat' && (
+        <>
+          {/* Messages container */}
+          <div className="flex-grow overflow-y-auto p-4">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`mb-4 ${m.role === "user" ? "text-right" : "text-left"}`}
+              >
+                <span
+                  className={`inline-block p-2 rounded-lg ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
+                >
+                  {m.content}
+                </span>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="text-left">
+                <span className="inline-block p-2 rounded-lg bg-gray-200 text-black">
+                  AI is thinking...
+                </span>
+              </div>
+            )}
+          </div>
+          
+          {/* Input form */}
+          <div className="p-4 border-t mt-auto">
+            <form onSubmit={handleFormSubmit} className="flex w-full space-x-2">
+              <Input
+                value={input}
+                onChange={handleInputChange}
+                placeholder="Type your message..."
+                className="flex-grow"
+              />
+              <Button type="submit" disabled={isLoading}>
+                Send
+              </Button>
+            </form>
+          </div>
+        </>
+      )}
+
+      {/* Examples Tab */}
+      {activeTab === 'examples' && (
+        <div className="flex-grow overflow-y-auto p-4">
+          <ExampleInputPanel
+            gearId={gearId}
+            examples={exampleInputs}
+            onAddExample={onAddExample}
+            onUpdateExample={onUpdateExample}
+            onDeleteExample={onDeleteExample}
+            onProcessExample={onProcessExample}
+            onProcessAllExamples={onProcessAllExamples}
+          />
+        </div>
+      )}
+    </div>
   );
 };

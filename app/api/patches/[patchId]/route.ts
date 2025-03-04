@@ -1,97 +1,103 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { Patch } from "@/lib/models/Patch";
 
-// GET /api/patches/[patchId] - Get a specific patch by ID
+export const runtime = "edge";
+
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { patchId: string } }
+  req: Request,
+  { params }: { params: Promise<{ patchId: string }> }
 ) {
   try {
-    const { patchId } = params;
+    const resolvedParams = await params;
+    const patchId = resolvedParams.patchId;
     const patch = await Patch.findById(patchId);
     
     if (!patch) {
-      return NextResponse.json(
-        { error: "Patch not found" },
-        { status: 404 }
-      );
+      return new Response("Patch not found", { status: 404 });
     }
     
-    // Return both the patch metadata and the ReactFlow data
-    return NextResponse.json({
+    return Response.json({
       id: patch.id,
       name: patch.name,
       description: patch.description,
       createdAt: patch.createdAt,
       updatedAt: patch.updatedAt,
-      reactflow: patch.toReactFlowData(),
+      nodes: patch.nodes,
+      edges: patch.edges
     });
   } catch (error) {
-    console.error(`Error fetching patch ${params.patchId}:`, error);
-    return NextResponse.json(
+    console.error(`Error fetching patch:`, error);
+    return Response.json(
       { error: "Failed to fetch patch" },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/patches/[patchId] - Update a specific patch
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { patchId: string } }
+  req: Request,
+  { params }: { params: Promise<{ patchId: string }> }
 ) {
   try {
-    const { patchId } = params;
-    const body = await request.json();
+    const resolvedParams = await params;
+    const patchId = resolvedParams.patchId;
+    const body = await req.json();
     
-    const patch = await Patch.findById(patchId);
+    let patch = await Patch.findById(patchId);
+    
     if (!patch) {
-      return NextResponse.json(
-        { error: "Patch not found" },
-        { status: 404 }
-      );
+      // Create new patch if it doesn't exist
+      patch = await Patch.create({
+        id: patchId,
+        name: body.name || `Patch ${patchId}`,
+        description: body.description || '',
+        nodes: body.nodes || [],
+        edges: body.edges || []
+      });
+    } else {
+      // Update existing patch
+      if (body.nodes) {
+        await patch.updateFromReactFlow({
+          nodes: body.nodes,
+          edges: body.edges || []
+        });
+      }
     }
     
-    // Update the patch with ReactFlow data
-    if (body.reactflow) {
-      await patch.updateFromReactFlow(body.reactflow);
-    }
-    
-    return NextResponse.json({
+    return Response.json({
       id: patch.id,
-      name: patch.name,
-      nodeCount: patch.nodes.length,
-      updatedAt: patch.updatedAt,
+      success: true
     });
   } catch (error) {
-    console.error(`Error updating patch ${params.patchId}:`, error);
-    return NextResponse.json(
+    console.error(`Error updating patch:`, error);
+    return Response.json(
       { error: "Failed to update patch" },
       { status: 500 }
     );
   }
 }
 
-// DELETE /api/patches/[patchId] - Delete a specific patch
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { patchId: string } }
+  req: Request,
+  { params }: { params: Promise<{ patchId: string }> }
 ) {
   try {
-    const { patchId } = params;
-    const deleted = await Patch.deleteById(patchId);
+    const resolvedParams = await params;
+    const patchId = resolvedParams.patchId;
     
-    if (!deleted) {
-      return NextResponse.json(
-        { error: "Patch not found" },
+    const success = await Patch.deleteById(patchId);
+    
+    if (!success) {
+      return Response.json(
+        { error: "Patch not found or could not be deleted" },
         { status: 404 }
       );
     }
     
-    return NextResponse.json({ success: true });
+    return Response.json({ success: true });
   } catch (error) {
-    console.error(`Error deleting patch ${params.patchId}:`, error);
-    return NextResponse.json(
+    console.error(`Error deleting patch:`, error);
+    return Response.json(
       { error: "Failed to delete patch" },
       { status: 500 }
     );

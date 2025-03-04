@@ -1,7 +1,7 @@
 import { Gear } from "./Gear";
+import { saveToKV, getFromKV, deleteFromKV, listKeysFromKV } from '../kv';
 
-// In-memory store for development purposes
-const patchStore = new Map<string, PatchData>();
+// No in-memory store - using Vercel KV exclusively for serverless architecture
 
 export interface PatchNode {
   id: string;
@@ -53,31 +53,256 @@ export class Patch {
   }
   
   static async deleteById(id: string): Promise<boolean> {
-    if (patchStore.has(id)) {
-      return patchStore.delete(id);
+    if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
+      try {
+        const response = await fetch(`/api/patches/${id}`, {
+          method: 'DELETE',
+        });
+        
+        const success = response.ok;
+        
+        // Also clean up localStorage for backward compatibility
+        try {
+          const savedPatchesStr = localStorage.getItem('patches');
+          if (savedPatchesStr) {
+            const savedPatches = JSON.parse(savedPatchesStr);
+            const filteredPatches = savedPatches.filter((p: {id: string}) => p.id !== id);
+            if (filteredPatches.length !== savedPatches.length) {
+              localStorage.setItem('patches', JSON.stringify(filteredPatches));
+            }
+          }
+        } catch (error) {
+          console.error(`Error deleting patch ${id} from localStorage:`, error);
+        }
+        
+        return success;
+      } catch (error) {
+        console.error(`Error deleting patch ${id}:`, error);
+        
+        // Fallback to just localStorage if API fails
+        try {
+          const savedPatchesStr = localStorage.getItem('patches');
+          if (savedPatchesStr) {
+            const savedPatches = JSON.parse(savedPatchesStr);
+            const filteredPatches = savedPatches.filter((p: {id: string}) => p.id !== id);
+            const success = filteredPatches.length !== savedPatches.length;
+            if (success) {
+              localStorage.setItem('patches', JSON.stringify(filteredPatches));
+            }
+            return success;
+          }
+        } catch (storageError) {
+          console.error(`Error deleting patch ${id} from localStorage:`, storageError);
+        }
+        
+        return false;
+      }
+    } else {
+      // Server-side: Use KV directly
+      const deleted = await deleteFromKV(`patch:${id}`);
+      
+      if (deleted) {
+        console.log(`Deleted patch ${id} from KV`);
+      }
+      
+      return deleted;
     }
-    return false;
   }
 
   static async findById(id: string): Promise<Patch | null> {
-    // Check if patch exists in memory store
-    if (patchStore.has(id)) {
-      return new Patch(patchStore.get(id)!);
+    if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
+      try {
+        const response = await fetch(`/api/patches/${id}`);
+        if (!response.ok) {
+          // If not found on server, try localStorage as fallback
+          try {
+            const savedPatches = localStorage.getItem('patches');
+            if (savedPatches) {
+              const patches = JSON.parse(savedPatches);
+              const localPatchData = patches.find((p: {id: string}) => p.id === id);
+              
+              if (localPatchData) {
+                console.log(`Found patch ${id} in localStorage`);
+                
+                // Also create it on the server for future requests
+                const createResponse = await fetch('/api/patches', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(localPatchData),
+                });
+                
+                if (!createResponse.ok) {
+                  console.warn(`Failed to migrate patch ${id} to server:`, await createResponse.text());
+                }
+                
+                return new Patch(localPatchData);
+              }
+            }
+          } catch (error) {
+            console.error("Error loading patch from localStorage:", error);
+          }
+          return null;
+        }
+        
+        const patchData = await response.json();
+        return new Patch(patchData);
+      } catch (error) {
+        console.error(`Error fetching patch ${id}:`, error);
+        return null;
+      }
+    } else {
+      // Server-side: Use KV directly
+      const patchData = await getFromKV<PatchData>(`patch:${id}`);
+      
+      if (patchData) {
+        console.log(`Found patch ${id} in KV store`);
+        return new Patch(patchData);
+      }
+      
+      // Return null if patch not found
+      return null;
     }
-    
-    // Return null if patch not found
-    return null;
   }
   
   // Get all patches from the store
   static async findAll(): Promise<Patch[]> {
-    return Array.from(patchStore.values()).map(data => new Patch(data));
+    if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
+      try {
+        const response = await fetch('/api/patches');
+        if (!response.ok) {
+          // If server fails, try localStorage as fallback
+          try {
+            const savedPatchesStr = localStorage.getItem('patches');
+            if (savedPatchesStr) {
+              const savedPatches = JSON.parse(savedPatchesStr);
+              return savedPatches.map((patchData: PatchData) => new Patch(patchData));
+            }
+          } catch (error) {
+            console.error("Error loading patches from localStorage:", error);
+          }
+          return [];
+        }
+        
+        const patchDataList = await response.json();
+        return patchDataList.map((patchData: PatchData) => new Patch(patchData));
+      } catch (error) {
+        console.error("Error fetching patches:", error);
+        
+        // Fallback to localStorage
+        try {
+          const savedPatchesStr = localStorage.getItem('patches');
+          if (savedPatchesStr) {
+            const savedPatches = JSON.parse(savedPatchesStr);
+            return savedPatches.map((patchData: PatchData) => new Patch(patchData));
+          }
+        } catch (error) {
+          console.error("Error loading patches from localStorage:", error);
+        }
+        
+        return [];
+      }
+    } else {
+      // Server-side: Use KV directly
+      const patches: Patch[] = [];
+      
+      // Get all patches from KV
+      const keys = await listKeysFromKV('patch:*');
+      
+      for (const key of keys) {
+        const patchData = await getFromKV<PatchData>(key);
+        if (patchData) {
+          patches.push(new Patch(patchData));
+        }
+      }
+      
+      return patches;
+    }
   }
 
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
-    // Store in memory map
-    patchStore.set(this.data.id, { ...this.data });
+    
+    if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
+      try {
+        // Check if the patch already exists
+        const checkResponse = await fetch(`/api/patches/${this.data.id}`);
+        
+        if (checkResponse.ok) {
+          // Update existing patch
+          const updateResponse = await fetch(`/api/patches/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.data),
+          });
+          
+          if (!updateResponse.ok) {
+            console.warn(`Failed to update patch ${this.data.id}:`, await updateResponse.text());
+          }
+        } else {
+          // Create new patch
+          const createResponse = await fetch('/api/patches', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.data),
+          });
+          
+          if (!createResponse.ok) {
+            console.warn(`Failed to create patch ${this.data.id}:`, await createResponse.text());
+          }
+        }
+        
+        // For backward compatibility, also update localStorage
+        try {
+          // Get existing patches
+          const savedPatchesStr = localStorage.getItem('patches');
+          const savedPatches = savedPatchesStr ? JSON.parse(savedPatchesStr) : [];
+          
+          // Find index of this patch if it exists
+          const patchIndex = savedPatches.findIndex((p: {id: string}) => p.id === this.data.id);
+          
+          if (patchIndex >= 0) {
+            // Update existing patch
+            savedPatches[patchIndex] = { ...this.data };
+          } else {
+            // Add new patch
+            savedPatches.push({ ...this.data });
+          }
+          
+          // Save back to localStorage
+          localStorage.setItem('patches', JSON.stringify(savedPatches));
+        } catch (error) {
+          console.error("Error saving patch to localStorage:", error);
+        }
+      } catch (error) {
+        console.error(`Error saving patch ${this.data.id}:`, error);
+        
+        // Fallback to localStorage only
+        try {
+          const savedPatchesStr = localStorage.getItem('patches');
+          const savedPatches = savedPatchesStr ? JSON.parse(savedPatchesStr) : [];
+          
+          const patchIndex = savedPatches.findIndex((p: {id: string}) => p.id === this.data.id);
+          
+          if (patchIndex >= 0) {
+            savedPatches[patchIndex] = { ...this.data };
+          } else {
+            savedPatches.push({ ...this.data });
+          }
+          
+          localStorage.setItem('patches', JSON.stringify(savedPatches));
+        } catch (storageError) {
+          console.error("Error saving patch to localStorage:", storageError);
+        }
+      }
+    } else {
+      // Server-side: Use KV directly
+      await saveToKV(`patch:${this.data.id}`, this.data);
+      console.log(`Saved patch to KV: ${this.data.id}`);
+    }
   }
 
   // Getters

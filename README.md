@@ -2,6 +2,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Prerequisites
+
+This application requires a Vercel KV instance for data persistence. You'll need to set up Vercel KV in your environment:
+
+1. Create a Vercel KV instance: [Vercel KV Documentation](https://vercel.com/docs/storage/vercel-kv)
+2. Copy the `.env.example` file to `.env.local` and fill in your Vercel KV credentials
+
+### Development Server
+
 First, run the development server:
 
 ```bash

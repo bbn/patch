@@ -28,18 +28,42 @@ export default function Home() {
 
   useEffect(() => {
     // Load recent patches
-    if (typeof window !== 'undefined') {
-      const savedPatches = localStorage.getItem('patches');
-      if (savedPatches) {
-        const patches = JSON.parse(savedPatches);
-        setRecentPatches(
-          patches
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .slice(0, 3)
-            .map((p) => ({ id: p.id, name: p.name }))
-        );
+    const loadRecentPatches = async () => {
+      try {
+        // First try to get from API
+        const response = await fetch('/api/patches');
+        if (response.ok) {
+          const patches = await response.json();
+          setRecentPatches(
+            patches
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .slice(0, 3)
+              .map((p) => ({ id: p.id, name: p.name }))
+          );
+          return;
+        }
+      } catch (error) {
+        console.error("Error fetching patches from API:", error);
       }
-    }
+      
+      // Fallback to localStorage
+      try {
+        const savedPatches = localStorage.getItem('patches');
+        if (savedPatches) {
+          const patches: Array<{ id: string; name: string; updatedAt: number }> = JSON.parse(savedPatches);
+          setRecentPatches(
+            patches
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .slice(0, 3)
+              .map((p) => ({ id: p.id, name: p.name }))
+          );
+        }
+      } catch (error) {
+        console.error("Error loading patches from localStorage:", error);
+      }
+    };
+    
+    loadRecentPatches();
   }, []);
 
   const addGear = () => {
@@ -171,6 +195,12 @@ export default function Home() {
             onMessageSent={(message) =>
               handleMessageSent(selectedGear, message)
             }
+            exampleInputs={[]}
+            onAddExample={async () => {}} 
+            onUpdateExample={async () => {}} 
+            onDeleteExample={async () => {}} 
+            onProcessExample={async () => {}} 
+            onProcessAllExamples={async () => {}}
           />
         </div>
       )}

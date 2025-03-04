@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    if (\!body.id || \!body.name) {
+    if (!body.id || !body.name) {
       return NextResponse.json(
         { error: "Missing required fields: id, name" },
         { status: 400 }

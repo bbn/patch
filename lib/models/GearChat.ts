@@ -18,4 +18,18 @@ export class GearChat {
     this.messages.push(message);
     return message;
   }
+  
+  async setMessages(messages: Message[]): Promise<void> {
+    // Clear current messages
+    this.messages.length = 0;
+    
+    // Add all messages with proper IDs
+    for (const msg of messages) {
+      this.messages.push({
+        id: msg.id || crypto.randomUUID(),
+        role: msg.role,
+        content: msg.content
+      });
+    }
+  }
 }
