@@ -423,7 +423,7 @@ export default function PatchPage() {
       y: event.clientY
     });
     
-    // Node dimensions
+    // Node dimensions (must match the GearNode component dimensions)
     const nodeWidth = 160;
     const nodeHeight = 80;
     
@@ -964,16 +964,16 @@ export default function PatchPage() {
         </Card>
       </div>
       {selectedNode && (
-        <div className="w-1/3 border-l pl-4 h-full flex flex-col">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold">
+        <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
+          <div className="mb-2 py-2">
+            <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
               {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs text-gray-500 truncate">
               ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
             </p>
           </div>
-          <div className="flex-grow h-[calc(100%-4rem)]">
+          <div className="flex-grow overflow-hidden h-[calc(100%-3rem)]">
             <ChatSidebar
               gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
               initialMessages={gearMessages}

@@ -16,14 +16,21 @@ interface GearNodeProps {
 }
 
 const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
+  // Truncate label if it's too long to fit in the node
+  const displayLabel = data.label.length > 25 
+    ? data.label.substring(0, 22) + '...' 
+    : data.label;
+    
   return (
-    <div className="rounded-lg bg-white border-2 border-gray-200 p-4 w-40 h-20 flex items-center justify-center">
+    <div className="rounded-lg bg-white border-2 border-gray-200 p-2 w-[160px] h-[80px] flex items-center justify-center overflow-hidden">
       <Handle
         type="target"
         position={Position.Left}
         isConnectable={isConnectable}
       />
-      <div>{data.label}</div>
+      <div className="text-center text-sm truncate max-w-[140px]" title={data.label}>
+        {displayLabel}
+      </div>
       <Handle
         type="source"
         position={Position.Right}
