@@ -954,9 +954,9 @@ export default function PatchPage() {
                 nodesDraggable={true}
                 fitView={false}
                 defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                proOptions={{ hideAttribution: true }}
               >
                 <Controls />
-                <MiniMap />
                 <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
               </ReactFlow>
             </div>

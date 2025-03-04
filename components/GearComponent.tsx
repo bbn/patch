@@ -72,6 +72,7 @@ export const GearComponent: React.FC<GearComponentProps> = ({
         nodeTypes={nodeTypes}
         fitView
         className="bg-white rounded-lg"
+        proOptions={{ hideAttribution: true }}
       />
     </div>
   );
