@@ -720,26 +720,45 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           response.includes('d:{"finish')) {
         
         console.log("LABEL DEBUG: Detected SSE metadata in response, extracting text parts");
+        console.log("LABEL DEBUG: Raw response:", response);
         
-        // Try to extract just the actual text content
-        // Common pattern is like: f:{"messageId":"..."} 0:"French" 0:" Translator" e:{...}
-        const matches = response.match(/0:"([^"]+)"/g);
-        if (matches && matches.length > 0) {
-          // Extract and join the text parts
-          cleanedLabel = matches
-            .map(m => m.substring(3, m.length - 1))
-            .join(' ')
-            .trim();
+        // Try approach 1: Extract text segments by looking for completions
+        const textSegments = [];
+        const regex = /0:"([^"]+)"/g;
+        let match;
+        
+        while ((match = regex.exec(response)) !== null) {
+          textSegments.push(match[1]);
+          console.log(`LABEL DEBUG: Found text segment: "${match[1]}"`);
+        }
+        
+        if (textSegments.length > 0) {
+          // Join the segments without spaces (the spaces are already in the text)
+          const rawText = textSegments.join('');
+          console.log("LABEL DEBUG: Raw joined text:", rawText);
           
-          console.log("LABEL DEBUG: Extracted text parts:", matches);
-          console.log("LABEL DEBUG: Combined text:", cleanedLabel);
+          // Clean up any potential weird spacing issues
+          cleanedLabel = rawText
+            .replace(/\s+/g, ' ')  // Convert multiple spaces to single space
+            .trim();
+            
+          console.log("LABEL DEBUG: Normalized spacing:", cleanedLabel);
         } else {
-          // Fallback to basic cleaning
-          cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+          // Try approach 2: Look for a clean text block in the response
+          const cleanTextMatch = response.match(/"([^"]{3,})"/);
+          if (cleanTextMatch && cleanTextMatch[1]) {
+            cleanedLabel = cleanTextMatch[1].trim();
+            console.log("LABEL DEBUG: Found clean text block:", cleanedLabel);
+          } else {
+            // Fallback to basic cleaning
+            cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+            console.log("LABEL DEBUG: Using fallback cleaning:", cleanedLabel);
+          }
         }
       } else {
         // Normal response - just clean and trim
         cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+        console.log("LABEL DEBUG: Normal response cleaning:", cleanedLabel);
       }
       
       console.log(`LABEL DEBUG: Cleaned label: "${cleanedLabel}"`);
