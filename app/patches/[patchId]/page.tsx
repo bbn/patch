@@ -445,7 +445,7 @@ export default function PatchPage() {
   }, [reactFlowInstance, addGearNode, nodes.length, isConnecting, wasConnectionJustMade]);
 
   // Handle message sent to a gear
-  const handleMessageSent = async (message: { role: string; content: string }) => {
+  const handleMessageSent = useCallback(async (message: { role: string; content: string }) => {
     if (!selectedNode) return;
     
     // Find the gear for this node
@@ -465,14 +465,43 @@ export default function PatchPage() {
           role: message.role as "user" | "assistant" | "system",
           content: message.content
         });
+        
         // After adding a message, the gear will automatically process all examples,
         // so we need to update our local state with the updated examples
         setExampleInputs(gear.exampleInputs);
+        
+        // If the message was from the assistant, a label may have been generated
+        // Update the node's label from the gear
+        if (message.role === "assistant") {
+          // Refetch the gear to get the updated label
+          const updatedGear = await Gear.findById(gearId as string);
+          if (updatedGear && updatedGear.label) {
+            // Update the node's label in the UI
+            setNodes(prev => 
+              prev.map(n => {
+                if (n.id === selectedNode) {
+                  // Update the node's label
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      label: updatedGear.label
+                    }
+                  };
+                }
+                return n;
+              })
+            );
+            
+            // Mark data as modified to trigger a save
+            setDataModified(true);
+          }
+        }
       }
     } catch (error) {
       console.error("Error sending message to gear:", error);
     }
-  };
+  }, [selectedNode, nodes, setNodes, setGearMessages, setExampleInputs, setDataModified]);
 
   // Example input handlers
   const handleAddExample = async (name: string, inputData: string) => {
