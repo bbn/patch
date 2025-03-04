@@ -26,13 +26,13 @@ export async function POST(
     
     console.log(`Chat API: Found gear with ${gear.messages.length} messages`);
 
-    // Check if this is a special request for label generation
+    // Special requests are now deprecated - we have a separate label endpoint
     if (special === true) {
-      console.log("Processing special request (likely label generation)");
+      console.warn("WARNING: Using deprecated 'special' flag in chat API. Use the dedicated /label endpoint instead.");
       
-      // For special requests, just pass the messages directly to avoid persisting them
+      // Keep this for backward compatibility, but log the warning
       const result = await streamText({
-        model: openai('gpt-4o-mini'), // Using a smaller model for label generation is sufficient
+        model: openai('gpt-4o-mini'),
         messages: messages,
         experimental_generateMessageId: createIdGenerator({
           prefix: 'special',

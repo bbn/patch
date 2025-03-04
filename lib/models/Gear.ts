@@ -804,27 +804,21 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         }
       }
       
-      // Browser environment - use the API endpoint
-      console.log(`Calling LLM API for special prompt`);
+      // Browser environment - use the dedicated label API endpoint
+      console.log(`Calling label API for gear ${this.id}`);
       
-      // Use the chat endpoint with a user message
+      // Use the label endpoint with the prompt
       const controller = new AbortController();
       const signal = controller.signal;
       
       try {
-        const response = await fetch(`/api/gears/${this.id}/chat`, {
+        const response = await fetch(`/api/gears/${this.id}/label`, {
           method: "POST",
           headers: { 
             "Content-Type": "application/json"
           },
           body: JSON.stringify({ 
-            messages: [
-              {
-                role: "user",
-                content: prompt
-              }
-            ],
-            special: true // Flag to indicate this is a special prompt, not part of normal chat
+            prompt: prompt
           }),
           signal
         });
