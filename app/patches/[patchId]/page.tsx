@@ -10,14 +10,16 @@ import {
   MiniMap,
   Controls,
   Background,
-  useNodesState,
-  useEdgesState,
   addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
   Connection,
   Node,
   Edge,
   BackgroundVariant,
   ReactFlowInstance,
+  OnNodesChange,
+  OnEdgesChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
@@ -36,9 +38,9 @@ export default function PatchPage() {
     label: string;
   };
   
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
+  const [nodes, setNodes] = useState<Node<NodeData>[]>([]);
   const [exampleInputs, setExampleInputs] = useState<any[]>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
   const [saving, setSaving] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   
@@ -145,6 +147,7 @@ export default function PatchPage() {
         id: `e${connection.source}-${connection.target}`,
       };
       
+      // Update edges state
       setEdges((eds) => addEdge(connection, eds));
       
       try {
@@ -647,57 +650,6 @@ export default function PatchPage() {
     console.log("==============================================");
   };
 
-  // Save changes to the patch via API
-  const savePatch = useCallback(async () => {
-    try {
-      setSaving(true);
-      
-      // Save via API
-      const response = await fetch(`/api/patches/${patchId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: patchName,
-          description: "",
-          nodes,
-          edges,
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to save patch: ${response.status}`);
-      }
-      
-      // Also update localStorage for backward compatibility
-      if (typeof window !== 'undefined') {
-        const savedPatches = localStorage.getItem('patches');
-        const patches = savedPatches ? JSON.parse(savedPatches) : [];
-        
-        const patchIndex = patches.findIndex((p: {id: string}) => p.id === patchId);
-        const updatedPatch = {
-          id: patchId,
-          name: patchName,
-          description: "",
-          updatedAt: Date.now(),
-          nodeCount: nodes.length,
-          nodes,
-          edges,
-        };
-        
-        if (patchIndex >= 0) {
-          patches[patchIndex] = updatedPatch;
-        } else {
-          patches.push(updatedPatch);
-        }
-        
-        localStorage.setItem('patches', JSON.stringify(patches));
-      }
-    } catch (error) {
-      console.error("Error saving patch:", error);
-    } finally {
-      setSaving(false);
-    }
-  }, [patchId, patchName, nodes, edges]);
 
   // Initialize the flow once with a consistent zoom level
   useEffect(() => {
@@ -706,6 +658,69 @@ export default function PatchPage() {
       reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
     }
   }, [reactFlowInstance, nodes.length]);
+  
+  // Effect to save patch automatically after changes
+  useEffect(() => {
+    // Don't save on initial empty state
+    if (nodes.length === 0 && edges.length === 0) return;
+    
+    // Only save if we've actually loaded data
+    if (patchName) {
+      // Inline save function to avoid circular references
+      const saveChanges = async () => {
+        try {
+          setSaving(true);
+          
+          // Save via API
+          const response = await fetch(`/api/patches/${patchId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: patchName,
+              description: "",
+              nodes,
+              edges,
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to save patch: ${response.status}`);
+          }
+          
+          // Also update localStorage for backward compatibility
+          if (typeof window !== 'undefined') {
+            const savedPatches = localStorage.getItem('patches');
+            const patches = savedPatches ? JSON.parse(savedPatches) : [];
+            
+            const patchIndex = patches.findIndex((p: {id: string}) => p.id === patchId);
+            const updatedPatch = {
+              id: patchId,
+              name: patchName,
+              description: "",
+              updatedAt: Date.now(),
+              nodeCount: nodes.length,
+              nodes,
+              edges,
+            };
+            
+            if (patchIndex >= 0) {
+              patches[patchIndex] = updatedPatch;
+            } else {
+              patches.push(updatedPatch);
+            }
+            
+            localStorage.setItem('patches', JSON.stringify(patches));
+          }
+        } catch (error) {
+          console.error("Error saving patch:", error);
+        } finally {
+          setSaving(false);
+        }
+      };
+      
+      saveChanges();
+    }
+  }, [nodes, edges, patchName, patchId, setSaving]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -720,27 +735,65 @@ export default function PatchPage() {
     }, 100);
   }, [setIsConnecting]);
 
+  // Handle nodes changes (add, remove, position, etc)
+  const onNodesChange: OnNodesChange = useCallback(
+    (changes) => {
+      // Apply changes to nodes
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      
+      // Check for node deletion
+      const nodeDeletions = changes.filter(change => change.type === 'remove');
+      
+      // Process node deletions to update server state
+      nodeDeletions.forEach(async (deletion) => {
+        const nodeId = deletion.id;
+        try {
+          // Save to server
+          const patch = await Patch.findById(patchId);
+          if (patch) {
+            await patch.removeNode(nodeId);
+          }
+        } catch (error) {
+          console.error(`Error removing node ${nodeId}:`, error);
+        }
+      });
+      
+      // If a node was deleted, and it was the selected node, deselect it
+      if (selectedNode && nodeDeletions.some(deletion => deletion.id === selectedNode)) {
+        setSelectedNode(null);
+      }
+    },
+    [selectedNode, patchId]
+  );
+  
+  // Handle edge changes
+  const onEdgesChange: OnEdgesChange = useCallback(
+    (changes) => {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+    },
+    []
+  );
+  
+  // Function to save patch when called directly (not used in effects)
+  const savePatch = () => {
+    // This is just a trigger for the effect now
+    // Force a state update to trigger the useEffect
+    setNodes(nodes => [...nodes]);
+  };
+
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
       <div className="flex-1 pr-4">
         <Card className="h-full">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>{patchName}</CardTitle>
-            <div className="flex space-x-2">
-              <Button 
-                onClick={savePatch}
-                disabled={saving}
-              >
-                Save Patch
-              </Button>
-            </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
             <div className="h-full w-full">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange as any}
+                onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onConnectStart={onConnectStart}
