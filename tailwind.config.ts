@@ -61,10 +61,26 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "25%": { opacity: "0.1" },
+          "50%": { opacity: "0.3" },
+          "75%": { opacity: "0.6" },
+          "100%": { opacity: "1" },
+        },
+        "blink-fade": {
+          "0%": { opacity: "1", backgroundColor: "yellow" },
+          "25%": { opacity: "0.8", backgroundColor: "transparent" },
+          "50%": { opacity: "0.3", backgroundColor: "yellow" },
+          "75%": { opacity: "0.8", backgroundColor: "transparent" },
+          "100%": { opacity: "1", backgroundColor: "yellow" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-in": "fade-in 1.2s ease-in-out",
+        "blink-fade": "blink-fade 2s ease-in-out 3", // Run 3 times over 2 seconds each
       },
     },
   },

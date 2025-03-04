@@ -51,6 +51,13 @@ export default function PatchPage() {
   
   // Track recent edge connections to prevent adding gear when connection completes
   const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
+  
+  // Track label animations
+  const [labelAnimation, setLabelAnimation] = useState<{
+    nodeId: string;
+    label: string;
+    animating: boolean;
+  } | null>(null);
 
   // Load patch data from API instead of direct KV access
   useEffect(() => {
@@ -492,6 +499,25 @@ export default function PatchPage() {
           
           if (updatedGear && updatedGear.label) {
             console.log(`UI DEBUG: Updating node ${selectedNode} label to "${updatedGear.label}"`);
+            
+            // Get the old label to check if it actually changed
+            const oldLabel = nodes.find(n => n.id === selectedNode)?.data?.label || "";
+            
+            if (oldLabel !== updatedGear.label) {
+              console.log(`ANIMATION DEBUG: Label changed from "${oldLabel}" to "${updatedGear.label}"`);
+              
+              // Trigger animation
+              setLabelAnimation({
+                nodeId: selectedNode,
+                label: updatedGear.label,
+                animating: true
+              });
+              
+              // Clear animation after a delay
+              setTimeout(() => {
+                setLabelAnimation(null);
+              }, 6000); // Animation runs for 6 seconds (3 cycles of 2s)
+            }
             
             // Update the node's label in the UI
             setNodes(prev => {
@@ -966,9 +992,22 @@ export default function PatchPage() {
       {selectedNode && (
         <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
           <div className="mb-2 py-2">
-            <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
-              {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
-            </h3>
+            {labelAnimation && labelAnimation.nodeId === selectedNode ? (
+              <h3 
+                className="text-lg font-semibold truncate max-w-full p-2 rounded animate-blink-fade" 
+                style={{border: '2px solid yellow', backgroundColor: 'lightyellow'}}
+                title={labelAnimation.label}
+              >
+                {labelAnimation.label}
+              </h3>
+            ) : (
+              <h3 
+                className="text-lg font-semibold truncate max-w-full p-2 rounded" 
+                title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+              >
+                {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+              </h3>
+            )}
             <p className="text-xs text-gray-500 truncate">
               ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
             </p>
