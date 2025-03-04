@@ -347,8 +347,10 @@ export class Gear {
   }
 
   async setLabel(label: string) {
+    console.log(`LABEL DEBUG: setLabel called with label: "${label}" (length: ${label.length}, type: ${typeof label})`);
     this.data.label = label;
     await this.save();
+    console.log(`LABEL DEBUG: setLabel completed, current label: "${this.data.label}"`);
   }
   
   // Setters
