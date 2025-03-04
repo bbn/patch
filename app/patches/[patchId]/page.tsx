@@ -30,7 +30,13 @@ export default function PatchPage() {
   const [patchName, setPatchName] = useState<string>("");
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<{ gearId: string; label: string }>>([]);
+  // Define a type for our node data
+  type NodeData = {
+    gearId: string;
+    label: string;
+  };
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
   const [exampleInputs, setExampleInputs] = useState<any[]>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [saving, setSaving] = useState(false);
@@ -734,7 +740,7 @@ export default function PatchPage() {
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
+                onNodesChange={onNodesChange as any}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onConnectStart={onConnectStart}

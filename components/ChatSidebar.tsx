@@ -24,7 +24,7 @@ import { ExampleInput } from "@/lib/models/Gear";
 
 interface ChatSidebarProps {
   gearId: string;
-  initialMessages: { role: string; content: string }[];
+  initialMessages: { id?: string; role: string; content: string }[];
   onMessageSent: (message: { role: string; content: string }) => void;
   exampleInputs: ExampleInput[];
   onAddExample: (name: string, input: string) => Promise<void>;

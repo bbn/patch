@@ -36,9 +36,9 @@ export default function Home() {
           const patches = await response.json();
           setRecentPatches(
             patches
-              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .sort((a: { updatedAt: number }, b: { updatedAt: number }) => b.updatedAt - a.updatedAt)
               .slice(0, 3)
-              .map((p) => ({ id: p.id, name: p.name }))
+              .map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }))
           );
           return;
         }
@@ -53,9 +53,9 @@ export default function Home() {
           const patches: Array<{ id: string; name: string; updatedAt: number }> = JSON.parse(savedPatches);
           setRecentPatches(
             patches
-              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .sort((a: { updatedAt: number }, b: { updatedAt: number }) => b.updatedAt - a.updatedAt)
               .slice(0, 3)
-              .map((p) => ({ id: p.id, name: p.name }))
+              .map((p: { id: string; name: string; updatedAt: number }) => ({ id: p.id, name: p.name }))
           );
         }
       } catch (error) {
