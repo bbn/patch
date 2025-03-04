@@ -44,6 +44,7 @@ export default function PatchPage() {
   const [saving, setSaving] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [dataModified, setDataModified] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   
   // Track if we're currently connecting nodes
   const [isConnecting, setIsConnecting] = useState(false);
@@ -668,17 +669,24 @@ export default function PatchPage() {
     }
   }, [reactFlowInstance, nodes.length]);
   
-  // Effect to save patch automatically after changes
-  useEffect(() => {
+  // Function to save patch with debouncing
+  const debouncedSave = useCallback(() => {
+    // Clear any existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    
     // Don't save on initial empty state
     if (nodes.length === 0 && edges.length === 0) return;
     
-    // Only save if we've actually loaded data AND data has been modified
+    // Only schedule save if we've actually loaded data AND data has been modified
     if (patchName && dataModified) {
-      console.log("Saving patch - data was modified by user action");
+      console.log("Scheduling debounced save in 2 seconds");
       
-      // Inline save function to avoid circular references
-      const saveChanges = async () => {
+      // Create a new timeout that will run after 2 seconds of inactivity
+      const timeoutId = setTimeout(async () => {
+        console.log("Executing debounced save - no changes for 2 seconds");
+        
         try {
           setSaving(true);
           
@@ -729,12 +737,25 @@ export default function PatchPage() {
           console.error("Error saving patch:", error);
         } finally {
           setSaving(false);
+          setSaveTimeout(null);
         }
-      };
+      }, 2000); // 2 second debounce delay
       
-      saveChanges();
+      setSaveTimeout(timeoutId);
     }
-  }, [nodes, edges, patchName, patchId, setSaving, dataModified]);
+  }, [nodes, edges, patchName, patchId, dataModified, saveTimeout]);
+
+  // Effect to trigger debounced save when changes occur
+  useEffect(() => {
+    debouncedSave();
+    
+    // Cleanup function to clear timeout if component unmounts
+    return () => {
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+    };
+  }, [nodes, edges, dataModified, debouncedSave, saveTimeout]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -798,13 +819,68 @@ export default function PatchPage() {
     [setDataModified]
   );
   
-  // Function to save patch when called directly (not used in effects)
-  const savePatch = () => {
-    // Mark data as modified to trigger a save
-    setDataModified(true);
-    // Force a state update to trigger the useEffect
-    setNodes(nodes => [...nodes] as Node<NodeData>[]);
-  };
+  // Function to save patch immediately when called directly
+  const savePatch = useCallback(async () => {
+    // Clear any existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      setSaveTimeout(null);
+    }
+    
+    console.log("Executing immediate save");
+    
+    try {
+      setSaving(true);
+      
+      // Save via API
+      const response = await fetch(`/api/patches/${patchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: patchName,
+          description: "",
+          nodes,
+          edges,
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save patch: ${response.status}`);
+      }
+      
+      // Also update localStorage for backward compatibility
+      if (typeof window !== 'undefined') {
+        const savedPatches = localStorage.getItem('patches');
+        const patches = savedPatches ? JSON.parse(savedPatches) : [];
+        
+        const patchIndex = patches.findIndex((p: {id: string}) => p.id === patchId);
+        const updatedPatch = {
+          id: patchId,
+          name: patchName,
+          description: "",
+          updatedAt: Date.now(),
+          nodeCount: nodes.length,
+          nodes,
+          edges,
+        };
+        
+        if (patchIndex >= 0) {
+          patches[patchIndex] = updatedPatch;
+        } else {
+          patches.push(updatedPatch);
+        }
+        
+        localStorage.setItem('patches', JSON.stringify(patches));
+      }
+      
+      // Reset the dataModified flag after successful save
+      setDataModified(false);
+    } catch (error) {
+      console.error("Error saving patch:", error);
+    } finally {
+      setSaving(false);
+    }
+  }, [nodes, edges, patchName, patchId, saveTimeout]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
