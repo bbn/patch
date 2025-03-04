@@ -738,8 +738,8 @@ export default function PatchPage() {
   // Handle nodes changes (add, remove, position, etc)
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => {
-      // Apply changes to nodes
-      setNodes((nds) => applyNodeChanges(changes, nds));
+      // Apply changes to nodes with proper typing
+      setNodes((nds) => applyNodeChanges(changes, nds) as Node<NodeData>[]);
       
       // Check for node deletion
       const nodeDeletions = changes.filter(change => change.type === 'remove');
@@ -769,7 +769,7 @@ export default function PatchPage() {
   // Handle edge changes
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
-      setEdges((eds) => applyEdgeChanges(changes, eds));
+      setEdges((eds) => applyEdgeChanges(changes, eds) as Edge[]);
     },
     []
   );
@@ -778,7 +778,7 @@ export default function PatchPage() {
   const savePatch = () => {
     // This is just a trigger for the effect now
     // Force a state update to trigger the useEffect
-    setNodes(nodes => [...nodes]);
+    setNodes(nodes => [...nodes] as Node<NodeData>[]);
   };
 
   return (
