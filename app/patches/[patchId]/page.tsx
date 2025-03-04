@@ -43,6 +43,7 @@ export default function PatchPage() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [saving, setSaving] = useState(false);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [dataModified, setDataModified] = useState(false);
   
   // Track if we're currently connecting nodes
   const [isConnecting, setIsConnecting] = useState(false);
@@ -54,6 +55,9 @@ export default function PatchPage() {
   useEffect(() => {
     async function loadPatch() {
       try {
+        // Reset modification flag when loading a new patch
+        setDataModified(false);
+        
         // Load from API which uses server-side KV
         const response = await fetch(`/api/patches/${patchId}`);
         
@@ -150,6 +154,9 @@ export default function PatchPage() {
       // Update edges state
       setEdges((eds) => addEdge(connection, eds));
       
+      // Mark data as modified since user added an edge
+      setDataModified(true);
+      
       try {
         const patch = await Patch.findById(patchId);
         if (patch) {
@@ -172,7 +179,7 @@ export default function PatchPage() {
         console.error("Error saving edge:", error);
       }
     },
-    [setEdges, patchId, nodes, setRecentConnection, setIsConnecting],
+    [setEdges, patchId, nodes, setRecentConnection, setIsConnecting, setDataModified],
   );
 
   // Handle adding a new gear node at a specific position
@@ -267,6 +274,8 @@ export default function PatchPage() {
       const currentNodeIds = new Set(nodes.map(n => n.id));
       if (!currentNodeIds.has(nodeId)) {
         setNodes(prevNodes => [...prevNodes, newNode]);
+        // Mark data as modified since user added a node
+        setDataModified(true);
       }
       
       // Save to the patch
@@ -285,7 +294,7 @@ export default function PatchPage() {
     } finally {
       setSaving(false);
     }
-  }, [patchId, setNodes]);
+  }, [patchId, setNodes, setDataModified]);
 
   // Handle node selection
   const onNodeClick = useCallback(async (_: React.MouseEvent, node: Node) => {
@@ -664,8 +673,10 @@ export default function PatchPage() {
     // Don't save on initial empty state
     if (nodes.length === 0 && edges.length === 0) return;
     
-    // Only save if we've actually loaded data
-    if (patchName) {
+    // Only save if we've actually loaded data AND data has been modified
+    if (patchName && dataModified) {
+      console.log("Saving patch - data was modified by user action");
+      
       // Inline save function to avoid circular references
       const saveChanges = async () => {
         try {
@@ -711,6 +722,9 @@ export default function PatchPage() {
             
             localStorage.setItem('patches', JSON.stringify(patches));
           }
+          
+          // Reset the dataModified flag after successful save
+          setDataModified(false);
         } catch (error) {
           console.error("Error saving patch:", error);
         } finally {
@@ -720,7 +734,7 @@ export default function PatchPage() {
       
       saveChanges();
     }
-  }, [nodes, edges, patchName, patchId, setSaving]);
+  }, [nodes, edges, patchName, patchId, setSaving, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -740,6 +754,11 @@ export default function PatchPage() {
     (changes) => {
       // Apply changes to nodes with proper typing
       setNodes((nds) => applyNodeChanges(changes, nds) as Node<NodeData>[]);
+      
+      // Mark data as modified when user makes changes (except when just selected)
+      if (changes.some(change => change.type !== 'select')) {
+        setDataModified(true);
+      }
       
       // Check for node deletion
       const nodeDeletions = changes.filter(change => change.type === 'remove');
@@ -763,20 +782,26 @@ export default function PatchPage() {
         setSelectedNode(null);
       }
     },
-    [selectedNode, patchId]
+    [selectedNode, patchId, setDataModified]
   );
   
   // Handle edge changes
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
       setEdges((eds) => applyEdgeChanges(changes, eds) as Edge[]);
+      
+      // Mark data as modified if edges are added or removed
+      if (changes.some(change => change.type === 'remove')) {
+        setDataModified(true);
+      }
     },
-    []
+    [setDataModified]
   );
   
   // Function to save patch when called directly (not used in effects)
   const savePatch = () => {
-    // This is just a trigger for the effect now
+    // Mark data as modified to trigger a save
+    setDataModified(true);
     // Force a state update to trigger the useEffect
     setNodes(nodes => [...nodes] as Node<NodeData>[]);
   };
