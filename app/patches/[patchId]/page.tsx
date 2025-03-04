@@ -501,7 +501,7 @@ export default function PatchPage() {
     } catch (error) {
       console.error("Error sending message to gear:", error);
     }
-  }, [selectedNode, nodes, setNodes, setGearMessages, setExampleInputs, setDataModified]);
+  }, [selectedNode, nodes]);
 
   // Example input handlers
   const handleAddExample = async (name: string, inputData: string) => {
@@ -776,7 +776,8 @@ export default function PatchPage() {
         clearTimeout(timeoutId);
       };
     }
-  }, [nodes, edges, patchName, patchId, dataModified, saveTimeout]);
+  // Removing saveTimeout from dependency array to prevent infinite loops
+  }, [nodes, edges, patchName, patchId, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -901,7 +902,8 @@ export default function PatchPage() {
     } finally {
       setSaving(false);
     }
-  }, [nodes, edges, patchName, patchId, saveTimeout, setSaveTimeout]);
+  // Removing saveTimeout and setSaveTimeout from dependency array to prevent infinite loops
+  }, [nodes, edges, patchName, patchId]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
