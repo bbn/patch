@@ -669,13 +669,8 @@ export default function PatchPage() {
     }
   }, [reactFlowInstance, nodes.length]);
   
-  // Function to save patch with debouncing
-  const debouncedSave = useCallback(() => {
-    // Clear any existing timeout
-    if (saveTimeout) {
-      clearTimeout(saveTimeout);
-    }
-    
+  // Effect to handle debounced saving
+  useEffect(() => {
     // Don't save on initial empty state
     if (nodes.length === 0 && edges.length === 0) return;
     
@@ -737,25 +732,22 @@ export default function PatchPage() {
           console.error("Error saving patch:", error);
         } finally {
           setSaving(false);
-          setSaveTimeout(null);
         }
       }, 2000); // 2 second debounce delay
       
-      setSaveTimeout(timeoutId);
-    }
-  }, [nodes, edges, patchName, patchId, dataModified, saveTimeout]);
-
-  // Effect to trigger debounced save when changes occur
-  useEffect(() => {
-    debouncedSave();
-    
-    // Cleanup function to clear timeout if component unmounts
-    return () => {
+      // Clean up any existing timeout before setting a new one
       if (saveTimeout) {
         clearTimeout(saveTimeout);
       }
-    };
-  }, [nodes, edges, dataModified, debouncedSave, saveTimeout]);
+      
+      setSaveTimeout(timeoutId);
+      
+      // Cleanup function to clear timeout if component unmounts or dependencies change
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }
+  }, [nodes, edges, patchName, patchId, dataModified, saveTimeout]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -880,7 +872,7 @@ export default function PatchPage() {
     } finally {
       setSaving(false);
     }
-  }, [nodes, edges, patchName, patchId, saveTimeout]);
+  }, [nodes, edges, patchName, patchId, saveTimeout, setSaveTimeout]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
