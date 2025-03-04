@@ -710,7 +710,36 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       console.log(`LABEL DEBUG: Got raw response for label:`, response);
       
       // Clean the response if needed (remove quotes, etc.)
-      const cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+      let cleanedLabel;
+      
+      // Handle the case where we're getting SSE metadata in the response
+      if (response.includes('f:{"message') || 
+          response.includes('e:{"finish') || 
+          response.includes('d:{"finish')) {
+        
+        console.log("LABEL DEBUG: Detected SSE metadata in response, extracting text parts");
+        
+        // Try to extract just the actual text content
+        // Common pattern is like: f:{"messageId":"..."} 0:"French" 0:" Translator" e:{...}
+        const matches = response.match(/0:"([^"]+)"/g);
+        if (matches && matches.length > 0) {
+          // Extract and join the text parts
+          cleanedLabel = matches
+            .map(m => m.substring(3, m.length - 1))
+            .join(' ')
+            .trim();
+          
+          console.log("LABEL DEBUG: Extracted text parts:", matches);
+          console.log("LABEL DEBUG: Combined text:", cleanedLabel);
+        } else {
+          // Fallback to basic cleaning
+          cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+        }
+      } else {
+        // Normal response - just clean and trim
+        cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+      }
+      
       console.log(`LABEL DEBUG: Cleaned label: "${cleanedLabel}"`);
       
       // Update the label
