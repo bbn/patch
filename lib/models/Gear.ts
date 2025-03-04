@@ -746,38 +746,69 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           // Handle streaming response
           let accumulatedContent = "";
           
-          const reader = response.body?.getReader();
-          const decoder = new TextDecoder();
-          
-          while (reader) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            const reader = response.body?.getReader();
+            if (!reader) {
+              console.warn("No reader available for stream");
+              return "Error reading stream";
+            }
             
-            const chunk = decoder.decode(value);
+            const decoder = new TextDecoder();
             
-            const lines = chunk.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6);
-                if (data === "[DONE]") break;
-                
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === "text" && parsed.value) {
-                    accumulatedContent += parsed.value;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value);
+              console.log("Stream chunk received:", chunk.substring(0, 50) + "...");
+              
+              const lines = chunk.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6).trim();
+                  if (data === "[DONE]") break;
+                  
+                  try {
+                    // Skip empty data
+                    if (!data) continue;
+                    
+                    const parsed = JSON.parse(data);
+                    if (parsed.type === "text" && parsed.value) {
+                      accumulatedContent += parsed.value;
+                    }
+                  } catch (e) {
+                    console.warn("Error parsing SSE data:", e, "Raw data:", data);
+                    // For malformed JSON, just append the raw text instead of failing
+                    if (data && !data.includes('{') && !data.includes('[')) {
+                      accumulatedContent += data;
+                    }
                   }
-                } catch (e) {
-                  console.warn("Error parsing SSE data:", e);
                 }
               }
             }
+            
+            return accumulatedContent;
+          } catch (streamError) {
+            console.error("Error processing stream:", streamError);
+            return "Error processing stream response";
           }
-          
-          return accumulatedContent;
         } else {
           // Regular JSON response
-          const result = await response.json();
-          return result.content || result.text;
+          try {
+            const text = await response.text();
+            console.log("Raw response:", text.substring(0, 100) + "...");
+            
+            try {
+              const result = JSON.parse(text);
+              return result.content || result.text || text;
+            } catch (jsonError) {
+              console.warn("Failed to parse JSON response, using raw text:", jsonError);
+              return text; // Use raw text if JSON parsing fails
+            }
+          } catch (textError) {
+            console.error("Error getting response text:", textError);
+            return "Error reading response";
+          }
         }
       } catch (error) {
         console.error("Error in LLM API call:", error);
@@ -929,8 +960,21 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             throw new Error(`Failed to process input: ${response.status} ${text}`);
           }
           
-          const result = await response.json();
-          return result.output;
+          try {
+            const text = await response.text();
+            console.log("Raw API response:", text.substring(0, 100) + "...");
+            
+            try {
+              const result = JSON.parse(text);
+              return result.output || text;
+            } catch (jsonError) {
+              console.warn("Failed to parse JSON response from API, using raw text:", jsonError);
+              return text;
+            }
+          } catch (textError) {
+            console.error("Error reading API response text:", textError);
+            return "Error reading API response";
+          }
         } catch (error) {
           console.error("Error in direct API call:", error);
           throw error;
@@ -966,52 +1010,86 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           // Simple accumulator for the streamed content
           let accumulatedContent = "";
           
-          // Create a reader for the response body
-          const reader = response.body?.getReader();
-          const decoder = new TextDecoder();
-          
-          while (reader) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            // Create a reader for the response body
+            const reader = response.body?.getReader();
+            if (!reader) {
+              console.warn("No reader available for stream");
+              return "Error reading stream";
+            }
             
-            // Decode the chunk
-            const chunk = decoder.decode(value);
+            const decoder = new TextDecoder();
             
-            // Simple parsing of SSE format
-            const lines = chunk.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6);
-                if (data === "[DONE]") {
-                  // End of stream
-                  break;
-                }
-                
-                try {
-                  // Parse the JSON in the data
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === "text" && parsed.value) {
-                    accumulatedContent += parsed.value;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              // Decode the chunk
+              const chunk = decoder.decode(value);
+              console.log("Stream chunk received:", chunk.substring(0, 50) + "...");
+              
+              // Simple parsing of SSE format
+              const lines = chunk.split("\n");
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6).trim();
+                  if (data === "[DONE]") {
+                    // End of stream
+                    break;
                   }
-                } catch (e) {
-                  console.warn("Error parsing SSE data:", e);
+                  
+                  // Skip empty data
+                  if (!data) continue;
+                  
+                  try {
+                    // Parse the JSON in the data
+                    const parsed = JSON.parse(data);
+                    if (parsed.type === "text" && parsed.value) {
+                      accumulatedContent += parsed.value;
+                    }
+                  } catch (e) {
+                    console.warn("Error parsing SSE data:", e, "Raw data:", data);
+                    // For malformed JSON, just append the raw text if it looks like plain text
+                    if (data && !data.includes('{') && !data.includes('[')) {
+                      accumulatedContent += data;
+                    }
+                  }
                 }
               }
             }
+            
+            console.log("Final accumulated content:", accumulatedContent);
+            return accumulatedContent;
+          } catch (streamError) {
+            console.error("Error processing stream:", streamError);
+            return "Error processing stream response";
           }
-          
-          console.log("Final accumulated content:", accumulatedContent);
-          return accumulatedContent;
         } else {
           // Regular JSON response
           console.log("Got regular JSON response");
-          const result = await response.json();
           
-          if (!result.content && !result.text) {
-            throw new Error("Received empty content from LLM response");
+          try {
+            const text = await response.text();
+            console.log("Raw response:", text.substring(0, 100) + "...");
+            
+            try {
+              const result = JSON.parse(text);
+              
+              if (!result.content && !result.text) {
+                console.warn("Received potentially empty content from LLM response");
+                // Return the raw text if we can't find content or text fields
+                return text;
+              }
+              
+              return result.content || result.text;
+            } catch (jsonError) {
+              console.warn("Failed to parse JSON response, using raw text:", jsonError);
+              return text; // Use raw text if JSON parsing fails
+            }
+          } catch (textError) {
+            console.error("Error getting response text:", textError);
+            return "Error reading response";
           }
-          
-          return result.content || result.text;
         }
       } catch (error) {
         console.error("Error in LLM API call:", error);
