@@ -21,6 +21,7 @@ export interface GearData {
   inputs?: Record<string, GearInput>;
   output?: GearOutput;
   exampleInputs?: ExampleInput[];
+  label?: string;
 }
 
 export class Gear {
@@ -37,6 +38,7 @@ export class Gear {
       inputs: data.inputs || {},
       output: data.output,
       exampleInputs: data.exampleInputs || [],
+      label: data.label || `Gear ${data.id.slice(0, 8)}`,
     };
     this.chat = new GearChat(this.data.messages, this.data.id);
   }
@@ -327,6 +329,15 @@ export class Gear {
 
   get exampleInputs() {
     return this.data.exampleInputs || [];
+  }
+
+  get label() {
+    return this.data.label || `Gear ${this.data.id.slice(0, 8)}`;
+  }
+
+  async setLabel(label: string) {
+    this.data.label = label;
+    await this.save();
   }
   
   // Setters
@@ -625,11 +636,158 @@ export class Gear {
         console.warn("Error updating gear messages on server:", err);
       }
     }
+
+    // Generate a new label if this completes a message exchange (user then assistant)
+    if (role === 'assistant' && this.data.messages.length >= 2) {
+      const previousMessage = this.data.messages[this.data.messages.length - 2];
+      if (previousMessage.role === 'user') {
+        await this.generateLabel();
+      }
+    }
     
     // If we have example inputs, process them all when instructions change
     if (this.data.exampleInputs && this.data.exampleInputs.length > 0) {
       // Process all examples with the updated instructions
       await this.processAllExamples();
+    }
+  }
+  
+  async generateLabel(): Promise<string> {
+    try {
+      // Generate a concise label based on the gear's messages
+      const prompt = `Based on this conversation, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
+
+Example conversations and labels:
+- Conversation about translating text to French → "French Translator"
+- Conversation about summarizing Slack messages → "Slack Summarizer"
+- Conversation about extracting key information from emails → "Email Extractor"
+
+Here is the conversation:
+${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
+`;
+
+      // Use the LLM to generate a label
+      const response = await this.processWithSpecialPrompt(prompt);
+      
+      // Clean the response if needed (remove quotes, etc.)
+      const cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+      
+      // Update the label
+      this.data.label = cleanedLabel;
+      await this.save();
+      
+      return cleanedLabel;
+    } catch (error) {
+      console.error("Error generating label:", error);
+      return this.label; // Return existing label if generation fails
+    }
+  }
+  
+  private async processWithSpecialPrompt(prompt: string): Promise<string> {
+    try {
+      if (typeof window === 'undefined') {
+        // In a Node.js environment (tests), we should use the Vercel AI SDK
+        try {
+          // Dynamically import the Vercel AI SDK to avoid requiring it at runtime in the browser
+          const { generateText } = await import('ai');
+          const { openai } = await import('@ai-sdk/openai');
+          
+          // Use the Vercel AI SDK to generate text
+          const response = await generateText({
+            model: openai('gpt-4o-mini'),
+            messages: [
+              { 
+                role: 'user',
+                content: prompt
+              }
+            ]
+          });
+          
+          return response.text;
+        } catch {
+          // If the real API call fails or the SDK is not available, throw an error
+          throw new Error("Error using AI SDK. If testing, use --mock-llms flag to mock LLM calls.");
+        }
+      }
+      
+      // Browser environment - use the API endpoint
+      console.log(`Calling LLM API for special prompt`);
+      
+      // Use the chat endpoint with a user message
+      const controller = new AbortController();
+      const signal = controller.signal;
+      
+      try {
+        const response = await fetch(`/api/gears/${this.id}/chat`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ 
+            messages: [
+              {
+                role: "user",
+                content: prompt
+              }
+            ],
+            special: true // Flag to indicate this is a special prompt, not part of normal chat
+          }),
+          signal
+        });
+        
+        if (!response.ok) {
+          const text = await response.text();
+          console.error(`LLM API error: ${response.status} ${text}`);
+          throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
+        }
+        
+        // Handle potential streaming response
+        if (response.headers.get("content-type")?.includes("text/event-stream")) {
+          // Handle streaming response
+          let accumulatedContent = "";
+          
+          const reader = response.body?.getReader();
+          const decoder = new TextDecoder();
+          
+          while (reader) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = decoder.decode(value);
+            
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6);
+                if (data === "[DONE]") break;
+                
+                try {
+                  const parsed = JSON.parse(data);
+                  if (parsed.type === "text" && parsed.value) {
+                    accumulatedContent += parsed.value;
+                  }
+                } catch (e) {
+                  console.warn("Error parsing SSE data:", e);
+                }
+              }
+            }
+          }
+          
+          return accumulatedContent;
+        } else {
+          // Regular JSON response
+          const result = await response.json();
+          return result.content || result.text;
+        }
+      } catch (error) {
+        console.error("Error in LLM API call:", error);
+        throw error;
+      } finally {
+        controller.abort();
+      }
+    } catch (error) {
+      console.error("Error processing special prompt with LLM:", error);
+      throw error;
     }
   }
 

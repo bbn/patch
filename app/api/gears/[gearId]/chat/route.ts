@@ -13,11 +13,11 @@ export async function POST(
   try {
     const resolvedParams = await params;
     console.log("Chat API called with gearId:", resolvedParams.gearId);
-    const { messages } = await request.json();
+    const { messages, special } = await request.json();
     const gearId = resolvedParams.gearId;
 
     // Try to find the gear
-    let gear = await Gear.findById(gearId);
+    const gear = await Gear.findById(gearId);
     
     if (!gear) {
       console.log("Chat API: Gear not found:", gearId);
@@ -26,6 +26,24 @@ export async function POST(
     
     console.log(`Chat API: Found gear with ${gear.messages.length} messages`);
 
+    // Check if this is a special request for label generation
+    if (special === true) {
+      console.log("Processing special request (likely label generation)");
+      
+      // For special requests, just pass the messages directly to avoid persisting them
+      const result = await streamText({
+        model: openai('gpt-4o-mini'), // Using a smaller model for label generation is sufficient
+        messages: messages,
+        experimental_generateMessageId: createIdGenerator({
+          prefix: 'special',
+          size: 16,
+        }),
+      });
+      
+      return result.toDataStreamResponse();
+    }
+
+    // Normal chat flow - not a special request
     // Create GearChat instance
     const gearChat = new GearChat(gear.messages, gearId);
     

@@ -6,6 +6,7 @@ interface Gear {
   id: string;
   outputUrls: string[];
   messages: { role: string; content: string }[];
+  label?: string;
 }
 
 interface GearNodeProps {
@@ -45,7 +46,7 @@ export const GearComponent: React.FC<GearComponentProps> = ({
     {
       id: gear.id,
       type: "gearNode",
-      data: { label: `Gear ${gear.id}` },
+      data: { label: gear.label || `Gear ${gear.id.slice(0, 8)}` },
       position: { x: 0, y: 0 },
     },
   ];
