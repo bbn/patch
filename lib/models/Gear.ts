@@ -1,20 +1,15 @@
-// import { kv } from '@vercel/kv'
+import { saveToKV, getFromKV, deleteFromKV, listKeysFromKV } from '../kv';
 import { GearChat } from "./GearChat";
 import { Message, Role, GearInput, GearOutput } from "./types";
 
-// In-memory store for development purposes
-const gearStore = new Map<string, GearData>();
+// No in-memory store - using Vercel KV exclusively for serverless architecture
 
-// Initialize with some test gears if empty
-if (gearStore.size === 0) {
-  const defaultGear = {
-    id: "gear-default",
-    outputUrls: [],
-    messages: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
-  gearStore.set(defaultGear.id, defaultGear);
+export interface ExampleInput {
+  id: string;
+  name: string;
+  input: GearInput;
+  output?: GearOutput;
+  lastProcessed?: number;
 }
 
 export interface GearData {
@@ -25,6 +20,7 @@ export interface GearData {
   updatedAt: number;
   inputs?: Record<string, GearInput>;
   output?: GearOutput;
+  exampleInputs?: ExampleInput[];
 }
 
 export class Gear {
@@ -40,6 +36,7 @@ export class Gear {
       updatedAt: data.updatedAt || Date.now(),
       inputs: data.inputs || {},
       output: data.output,
+      exampleInputs: data.exampleInputs || [],
     };
     this.chat = new GearChat(this.data.messages, this.data.id);
   }
@@ -51,102 +48,256 @@ export class Gear {
   }
   
   static async deleteById(id: string): Promise<boolean> {
-    if (gearStore.has(id)) {
-      return gearStore.delete(id);
+    if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
+      try {
+        const response = await fetch(`/api/gears/${id}`, {
+          method: 'DELETE',
+        });
+        
+        const success = response.ok;
+        
+        // Also clean up localStorage for backward compatibility
+        try {
+          const savedGearsStr = localStorage.getItem('gears');
+          if (savedGearsStr) {
+            const savedGears = JSON.parse(savedGearsStr);
+            const filteredGears = savedGears.filter((g: {id: string}) => g.id !== id);
+            if (filteredGears.length !== savedGears.length) {
+              localStorage.setItem('gears', JSON.stringify(filteredGears));
+            }
+          }
+        } catch (error) {
+          console.error(`Error deleting gear ${id} from localStorage:`, error);
+        }
+        
+        return success;
+      } catch (error) {
+        console.error(`Error deleting gear ${id}:`, error);
+        
+        // Fallback to just localStorage if API fails
+        try {
+          const savedGearsStr = localStorage.getItem('gears');
+          if (savedGearsStr) {
+            const savedGears = JSON.parse(savedGearsStr);
+            const filteredGears = savedGears.filter((g: {id: string}) => g.id !== id);
+            const success = filteredGears.length !== savedGears.length;
+            if (success) {
+              localStorage.setItem('gears', JSON.stringify(filteredGears));
+            }
+            return success;
+          }
+        } catch (storageError) {
+          console.error(`Error deleting gear ${id} from localStorage:`, storageError);
+        }
+        
+        return false;
+      }
+    } else {
+      // Server-side: Use KV directly
+      const deleted = await deleteFromKV(`gear:${id}`);
+      
+      if (deleted) {
+        console.log(`Deleted gear ${id} from KV`);
+      }
+      
+      return deleted;
     }
-    return false;
   }
 
   static async findById(id: string): Promise<Gear | null> {
-    // Check if gear exists in memory store
-    if (gearStore.has(id)) {
-      return new Gear(gearStore.get(id)!);
-    }
-    
-    // If not in memory, try to get from localStorage (in browser environment)
     if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
       try {
-        const savedGears = localStorage.getItem('gears');
-        if (savedGears) {
-          const gears = JSON.parse(savedGears);
-          const gearData = gears.find((g: {id: string}) => g.id === id);
-          
-          if (gearData) {
-            // Add to memory store and return
-            const gear = new Gear(gearData);
-            gearStore.set(id, { ...gearData });
-            return gear;
+        const response = await fetch(`/api/gears/${id}`);
+        if (!response.ok) {
+          // If not found on server, try localStorage as fallback
+          try {
+            const savedGears = localStorage.getItem('gears');
+            if (savedGears) {
+              const gears = JSON.parse(savedGears);
+              const localGearData = gears.find((g: {id: string}) => g.id === id);
+              
+              if (localGearData) {
+                console.log(`Found gear ${id} in localStorage`);
+                
+                // Also create it on the server for future requests
+                const createResponse = await fetch('/api/gears', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(localGearData),
+                });
+                
+                if (!createResponse.ok) {
+                  console.warn(`Failed to migrate gear ${id} to server:`, await createResponse.text());
+                }
+                
+                return new Gear(localGearData);
+              }
+            }
+          } catch (error) {
+            console.error("Error loading gear from localStorage:", error);
           }
+          return null;
         }
+        
+        const gearData = await response.json();
+        return new Gear(gearData);
       } catch (error) {
-        console.error("Error loading gear from localStorage:", error);
+        console.error(`Error fetching gear ${id}:`, error);
+        return null;
       }
+    } else {
+      // Server-side: Use KV directly
+      const gearData = await getFromKV<GearData>(`gear:${id}`);
+      
+      if (gearData) {
+        console.log(`Found gear ${id} in KV store`);
+        return new Gear(gearData);
+      }
+      
+      // Return null if gear not found
+      return null;
     }
-    
-    // Return null if gear not found
-    return null;
   }
   
   // Get all gears from the store
   static async findAll(): Promise<Gear[]> {
-    // Get gears from memory store
-    const memoryGears = Array.from(gearStore.values()).map(data => new Gear(data));
-    
-    // In browser environment, also try to get from localStorage
     if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
       try {
-        const savedGearsStr = localStorage.getItem('gears');
-        if (savedGearsStr) {
-          const savedGears = JSON.parse(savedGearsStr);
-          
-          // For any gear in localStorage but not in memory, add it to memory and to the result
-          for (const gearData of savedGears) {
-            if (!gearStore.has(gearData.id)) {
-              gearStore.set(gearData.id, gearData);
-              memoryGears.push(new Gear(gearData));
+        const response = await fetch('/api/gears');
+        if (!response.ok) {
+          // If server fails, try localStorage as fallback
+          try {
+            const savedGearsStr = localStorage.getItem('gears');
+            if (savedGearsStr) {
+              const savedGears = JSON.parse(savedGearsStr);
+              return savedGears.map((gearData: GearData) => new Gear(gearData));
             }
+          } catch (error) {
+            console.error("Error loading gears from localStorage:", error);
           }
+          return [];
         }
+        
+        const gearDataList = await response.json();
+        return gearDataList.map((gearData: GearData) => new Gear(gearData));
       } catch (error) {
-        console.error("Error loading gears from localStorage:", error);
+        console.error("Error fetching gears:", error);
+        
+        // Fallback to localStorage
+        try {
+          const savedGearsStr = localStorage.getItem('gears');
+          if (savedGearsStr) {
+            const savedGears = JSON.parse(savedGearsStr);
+            return savedGears.map((gearData: GearData) => new Gear(gearData));
+          }
+        } catch (error) {
+          console.error("Error loading gears from localStorage:", error);
+        }
+        
+        return [];
       }
+    } else {
+      // Server-side: Use KV directly
+      const gears: Gear[] = [];
+      
+      // Get all gears from KV
+      const keys = await listKeysFromKV('gear:*');
+      
+      for (const key of keys) {
+        const gearData = await getFromKV<GearData>(key);
+        if (gearData) {
+          gears.push(new Gear(gearData));
+        }
+      }
+      
+      return gears;
     }
-    
-    return memoryGears;
   }
 
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     
-    // Store in memory map
-    gearStore.set(this.data.id, { ...this.data });
-    
-    // Save to localStorage in browser environment
     if (typeof window !== 'undefined') {
+      // Client-side: Use the API endpoint
       try {
-        // Get existing gears
-        const savedGearsStr = localStorage.getItem('gears');
-        const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
+        // Check if the gear already exists
+        const checkResponse = await fetch(`/api/gears/${this.data.id}`);
         
-        // Find index of this gear if it exists
-        const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
-        
-        if (gearIndex >= 0) {
+        if (checkResponse.ok) {
           // Update existing gear
-          savedGears[gearIndex] = { ...this.data };
+          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.data),
+          });
+          
+          if (!updateResponse.ok) {
+            console.warn(`Failed to update gear ${this.data.id}:`, await updateResponse.text());
+          }
         } else {
-          // Add new gear
-          savedGears.push({ ...this.data });
+          // Create new gear
+          const createResponse = await fetch('/api/gears', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.data),
+          });
+          
+          if (!createResponse.ok) {
+            console.warn(`Failed to create gear ${this.data.id}:`, await createResponse.text());
+          }
         }
         
-        // Save back to localStorage
-        localStorage.setItem('gears', JSON.stringify(savedGears));
+        // For backward compatibility, also update localStorage
+        try {
+          // Get existing gears
+          const savedGearsStr = localStorage.getItem('gears');
+          const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
+          
+          // Find index of this gear if it exists
+          const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
+          
+          if (gearIndex >= 0) {
+            // Update existing gear
+            savedGears[gearIndex] = { ...this.data };
+          } else {
+            // Add new gear
+            savedGears.push({ ...this.data });
+          }
+          
+          // Save back to localStorage
+          localStorage.setItem('gears', JSON.stringify(savedGears));
+        } catch (error) {
+          console.error("Error saving gear to localStorage:", error);
+        }
       } catch (error) {
-        console.error("Error saving gear to localStorage:", error);
+        console.error(`Error saving gear ${this.data.id}:`, error);
+        
+        // Fallback to localStorage only
+        try {
+          const savedGearsStr = localStorage.getItem('gears');
+          const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
+          
+          const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
+          
+          if (gearIndex >= 0) {
+            savedGears[gearIndex] = { ...this.data };
+          } else {
+            savedGears.push({ ...this.data });
+          }
+          
+          localStorage.setItem('gears', JSON.stringify(savedGears));
+        } catch (storageError) {
+          console.error("Error saving gear to localStorage:", storageError);
+        }
       }
+    } else {
+      // Server-side: Use KV directly
+      await saveToKV(`gear:${this.data.id}`, this.data);
+      console.log(`Saved gear to KV: ${this.data.id}`);
     }
-    
-    // await kv.set(`gear:${this.data.id}`, this.data)
   }
 
   // Getters
@@ -174,10 +325,312 @@ export class Gear {
     return this.data.output;
   }
 
+  get exampleInputs() {
+    return this.data.exampleInputs || [];
+  }
+  
+  // Setters
+  async setMessages(messages: Message[]) {
+    this.data.messages = messages;
+    await this.save();
+  }
+  
+  async setOutputUrls(urls: string[]) {
+    this.data.outputUrls = urls;
+    await this.save();
+  }
+  
+  async setExampleInputs(examples: ExampleInput[]) {
+    this.data.exampleInputs = examples;
+    await this.save();
+  }
+
+  async addExampleInput(name: string, input: GearInput): Promise<ExampleInput> {
+    if (!this.data.exampleInputs) {
+      this.data.exampleInputs = [];
+    }
+    
+    // Try to parse input as JSON if it's a string that looks like JSON
+    let processedInput: GearInput = input;
+    if (typeof input === 'string') {
+      try {
+        // Check if input looks like JSON
+        if (input.trim().startsWith('{') || input.trim().startsWith('[')) {
+          processedInput = JSON.parse(input);
+        }
+      } catch (error) {
+        // If parsing fails, keep the original string
+        console.log("Input couldn't be parsed as JSON, using as string:", error);
+        processedInput = input;
+      }
+    }
+    
+    const example: ExampleInput = {
+      id: crypto.randomUUID(),
+      name,
+      input: processedInput,
+    };
+    
+    this.data.exampleInputs.push(example);
+    await this.save();
+    
+    // Sync with server
+    if (typeof window !== 'undefined') {
+      try {
+        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exampleInputs: this.data.exampleInputs
+          }),
+        });
+        
+        if (!updateResponse.ok) {
+          console.warn("Failed to update example inputs on server:", await updateResponse.text());
+        }
+      } catch (err) {
+        console.warn("Error updating example inputs on server:", err);
+      }
+    }
+    
+    return example;
+  }
+
+  async updateExampleInput(id: string, updates: Partial<ExampleInput>): Promise<ExampleInput | null> {
+    if (!this.data.exampleInputs) {
+      return null;
+    }
+    
+    const index = this.data.exampleInputs.findIndex(example => example.id === id);
+    if (index === -1) {
+      return null;
+    }
+    
+    // Process input if provided and is a string that looks like JSON
+    if (updates.input && typeof updates.input === 'string') {
+      try {
+        // Check if input looks like JSON
+        if (updates.input.trim().startsWith('{') || updates.input.trim().startsWith('[')) {
+          updates = {
+            ...updates,
+            input: JSON.parse(updates.input as string)
+          };
+        }
+      } catch (error) {
+        // If parsing fails, keep the original string
+        console.log("Input couldn't be parsed as JSON, using as string:", error);
+      }
+    }
+    
+    this.data.exampleInputs[index] = {
+      ...this.data.exampleInputs[index],
+      ...updates
+    };
+    
+    await this.save();
+    
+    // Sync with server
+    if (typeof window !== 'undefined') {
+      try {
+        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exampleInputs: this.data.exampleInputs
+          }),
+        });
+        
+        if (!updateResponse.ok) {
+          console.warn("Failed to update example inputs on server:", await updateResponse.text());
+        }
+      } catch (err) {
+        console.warn("Error updating example inputs on server:", err);
+      }
+    }
+    
+    return this.data.exampleInputs[index];
+  }
+
+  async deleteExampleInput(id: string): Promise<boolean> {
+    if (!this.data.exampleInputs) {
+      return false;
+    }
+    
+    const initialLength = this.data.exampleInputs.length;
+    this.data.exampleInputs = this.data.exampleInputs.filter(example => example.id !== id);
+    
+    if (this.data.exampleInputs.length !== initialLength) {
+      await this.save();
+      
+      // Sync with server
+      if (typeof window !== 'undefined') {
+        try {
+          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              exampleInputs: this.data.exampleInputs
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            console.warn("Failed to update example inputs on server:", await updateResponse.text());
+          }
+        } catch (err) {
+          console.warn("Error updating example inputs on server:", err);
+        }
+      }
+      
+      return true;
+    }
+    
+    return false;
+  }
+
+  async processExampleInput(id: string): Promise<ExampleInput | null> {
+    if (!this.data.exampleInputs) {
+      return null;
+    }
+    
+    const example = this.data.exampleInputs.find(ex => ex.id === id);
+    if (!example) {
+      return null;
+    }
+    
+    try {
+      const output = await this.processWithLLM(example.input);
+      
+      // Update the example with the new output
+      example.output = output;
+      example.lastProcessed = Date.now();
+      
+      await this.save();
+      
+      // Sync with server
+      if (typeof window !== 'undefined') {
+        try {
+          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              exampleInputs: this.data.exampleInputs
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            console.warn("Failed to update processed example on server:", await updateResponse.text());
+          }
+        } catch (err) {
+          console.warn("Error updating processed example on server:", err);
+        }
+      }
+      
+      return example;
+    } catch (error) {
+      console.error(`Error processing example input ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async processAllExamples(): Promise<ExampleInput[]> {
+    if (!this.data.exampleInputs || this.data.exampleInputs.length === 0) {
+      return [];
+    }
+    
+    const results: ExampleInput[] = [];
+    
+    for (const example of this.data.exampleInputs) {
+      try {
+        const output = await this.processWithLLM(example.input);
+        
+        // Update the example with the new output
+        example.output = output;
+        example.lastProcessed = Date.now();
+        
+        results.push(example);
+      } catch (error) {
+        console.error(`Error processing example input ${example.id}:`, error);
+        // Continue processing other examples even if one fails
+      }
+    }
+    
+    await this.save();
+    
+    // Sync with server
+    if (typeof window !== 'undefined') {
+      try {
+        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            exampleInputs: this.data.exampleInputs
+          }),
+        });
+        
+        if (!updateResponse.ok) {
+          console.warn("Failed to update processed examples on server:", await updateResponse.text());
+        }
+      } catch (err) {
+        console.warn("Error updating processed examples on server:", err);
+      }
+    }
+    
+    return results;
+  }
+
   async addMessage({ role, content }: { role: Role; content: string }) {
     await this.chat.addMessage({ role, content });
     // Note: we don't need to push to data.messages since the GearChat maintains the same reference
     await this.save();
+    
+    // Explicitly update on the server as well to ensure consistency
+    if (typeof window !== 'undefined') {
+      try {
+        // First check if gear exists on server
+        const checkResponse = await fetch(`/api/gears/${this.data.id}`);
+        
+        if (checkResponse.ok) {
+          // Gear exists, update it
+          console.log(`Updating gear ${this.data.id} messages on server`);
+          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: this.data.messages
+            }),
+          });
+          
+          if (!updateResponse.ok) {
+            console.warn(`Failed to update gear ${this.data.id} messages:`, await updateResponse.text());
+          }
+        } else {
+          // Gear doesn't exist, create it
+          console.log(`Creating missing gear ${this.data.id} on server with messages`);
+          const createResponse = await fetch('/api/gears', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: this.data.id,
+              messages: this.data.messages,
+              outputUrls: this.data.outputUrls,
+              exampleInputs: this.data.exampleInputs
+            }),
+          });
+          
+          if (!createResponse.ok) {
+            console.warn(`Failed to create gear ${this.data.id} on server:`, await createResponse.text());
+          }
+        }
+      } catch (err) {
+        console.warn("Error updating gear messages on server:", err);
+      }
+    }
+    
+    // If we have example inputs, process them all when instructions change
+    if (this.data.exampleInputs && this.data.exampleInputs.length > 0) {
+      // Process all examples with the updated instructions
+      await this.processAllExamples();
+    }
   }
 
   async processInput(source: string, input: GearInput): Promise<GearOutput> {
@@ -297,9 +750,36 @@ export class Gear {
         }
       ];
       
-      // We need to capture the streaming response
-      // This will be a complex implementation that uses the Vercel AI SDK
-      // For now, let's use a simpler approach that uses text/event-stream
+      // For processing examples, use direct API call (not chat endpoint)
+      if (input !== undefined) {
+        console.log(`Processing input directly for gear ${this.id}`);
+        try {
+          const response = await fetch(`/api/gears/${this.id}`, {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ 
+              message: input,
+              source: 'example'
+            })
+          });
+          
+          if (!response.ok) {
+            const text = await response.text();
+            console.error(`API error: ${response.status} ${text}`);
+            throw new Error(`Failed to process input: ${response.status} ${text}`);
+          }
+          
+          const result = await response.json();
+          return result.output;
+        } catch (error) {
+          console.error("Error in direct API call:", error);
+          throw error;
+        }
+      }
+      
+      // For chat interactions and other processing without specific input, use chat endpoint
       const controller = new AbortController();
       const signal = controller.signal;
       
