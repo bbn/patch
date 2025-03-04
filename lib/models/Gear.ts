@@ -681,8 +681,8 @@ export class Gear {
       }
     }
     
-    // If we have example inputs, process them all when instructions change
-    if (this.data.exampleInputs && this.data.exampleInputs.length > 0) {
+    // If role is "system" or "user" and we have example inputs, process them all when instructions change
+    if ((role === "system" || role === "user") && this.data.exampleInputs && this.data.exampleInputs.length > 0) {
       // Process all examples with the updated instructions
       await this.processAllExamples();
     }
