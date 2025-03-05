@@ -10,6 +10,7 @@ import {
   MiniMap,
   Controls,
   Background,
+  Panel,
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
@@ -782,62 +783,63 @@ export default function PatchPage() {
   };
 
   return (
-    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
-      <div className="flex-1 pr-4">
-        <Card className="h-full">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{patchName}</CardTitle>
-          </CardHeader>
-          <CardContent className="h-[calc(100%-5rem)]">
-            <div className="h-full w-full">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onConnectStart={onConnectStart}
-                onConnectEnd={onConnectEnd}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                onInit={setReactFlowInstance}
-                nodesDraggable={true}
-                fitView={false}
-                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-              >
-                <Controls />
-                <MiniMap />
-                <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-              </ReactFlow>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      {selectedNode && (
-        <div className="w-1/3 border-l pl-4 h-full flex flex-col">
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold">
-              {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
-            </h3>
-            <p className="text-sm text-gray-500">
-              ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
-            </p>
+    <div className="container mx-auto p-4 h-[calc(100vh-3.5rem)]">
+      <Card className="h-full">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>{patchName}</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[calc(100%-5rem)]">
+          <div className="h-full w-full">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onConnectStart={onConnectStart}
+              onConnectEnd={onConnectEnd}
+              onNodeClick={onNodeClick}
+              onPaneClick={onPaneClick}
+              onInit={setReactFlowInstance}
+              nodesDraggable={true}
+              fitView={false}
+              defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+            >
+              <Controls />
+              <MiniMap />
+              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+              
+              {selectedNode && (
+                <Panel position="right" className="w-1/3 h-full bg-white shadow-lg rounded-lg overflow-hidden">
+                  <div className="h-full flex flex-col p-4">
+                    <div className="mb-4">
+                      <h3 className="text-lg font-semibold">
+                        {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
+                      </p>
+                    </div>
+                    <div className="flex-grow h-[calc(100%-4rem)]">
+                      <ChatSidebar
+                        gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
+                        initialMessages={gearMessages}
+                        onMessageSent={handleMessageSent}
+                        exampleInputs={exampleInputs}
+                        onAddExample={handleAddExample}
+                        onUpdateExample={handleUpdateExample}
+                        onDeleteExample={handleDeleteExample}
+                        onProcessExample={handleProcessExample}
+                        onProcessAllExamples={handleProcessAllExamples}
+                      />
+                    </div>
+                  </div>
+                </Panel>
+              )}
+            </ReactFlow>
           </div>
-          <div className="flex-grow h-[calc(100%-4rem)]">
-            <ChatSidebar
-              gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
-              initialMessages={gearMessages}
-              onMessageSent={handleMessageSent}
-              exampleInputs={exampleInputs}
-              onAddExample={handleAddExample}
-              onUpdateExample={handleUpdateExample}
-              onDeleteExample={handleDeleteExample}
-              onProcessExample={handleProcessExample}
-              onProcessAllExamples={handleProcessAllExamples}
-            />
-          </div>
-        </div>
-      )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

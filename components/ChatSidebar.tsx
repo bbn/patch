@@ -96,10 +96,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'chat' | 'examples'>('chat');
 
   return (
-    <div className="w-full h-full flex flex-col border rounded-md">
+    <div className="w-full h-full flex flex-col bg-white">
       {/* Header with tabs */}
       <div className="p-4 border-b flex justify-between items-center">
-        <h3 className="font-semibold">Gear {gearId}</h3>
+        <h3 className="font-semibold">Gear Configuration</h3>
         <div className="flex">
           <Button
             variant={activeTab === 'chat' ? 'default' : 'outline'}
