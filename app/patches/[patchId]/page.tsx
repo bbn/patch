@@ -40,13 +40,13 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={Position.Top}
         isConnectable={isConnectable}
       />
       <div>{data.label}</div>
       <Handle
         type="source"
-        position={Position.Right}
+        position={Position.Bottom}
         isConnectable={isConnectable}
       />
     </div>
@@ -1081,9 +1081,9 @@ export default function PatchPage() {
               nodesDraggable={true}
               fitView={false}
               defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+              proOptions={{ hideAttribution: true }}
             >
               <Controls />
-              <MiniMap />
               <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
               
               {selectedNode && (

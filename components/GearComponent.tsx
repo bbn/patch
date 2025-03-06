@@ -28,13 +28,13 @@ const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
     >
       <Handle
         type="target"
-        position={Position.Left}
+        position={Position.Top}
         isConnectable={isConnectable}
       />
       <div>{data.label}</div>
       <Handle
         type="source"
-        position={Position.Right}
+        position={Position.Bottom}
         isConnectable={isConnectable}
       />
     </div>
