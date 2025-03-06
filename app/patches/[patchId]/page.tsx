@@ -1089,13 +1089,23 @@ export default function PatchPage() {
               {selectedNode && (
                 <Panel position="right" className="w-1/3 h-full bg-white shadow-lg rounded-lg overflow-hidden">
                   <div className="h-full flex flex-col p-4">
-                    <div className="mb-4">
-                      <h3 className="text-lg font-semibold">
-                        {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
-                      </p>
+                    <div className="mb-4 flex justify-between items-center">
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
+                        </p>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setSelectedNode(null)}
+                        className="h-8 w-8 p-0"
+                      >
+                        ✕
+                      </Button>
                     </div>
                     <div className="flex-grow h-[calc(100%-4rem)]">
                       <ChatSidebar
