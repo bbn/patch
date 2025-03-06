@@ -32,17 +32,9 @@ export default function RootLayout({
       >
         <header className="border-b py-2">
           <div className="container mx-auto flex items-center">
-            <h1 className="text-xl font-bold mr-8">
+            <h1 className="text-xl font-bold">
               <Link href="/">patch.land</Link>
             </h1>
-            <nav className="flex space-x-6">
-              <Link href="/" className="hover:text-blue-600 transition-colors">
-                Gears
-              </Link>
-              <Link href="/patches" className="hover:text-blue-600 transition-colors">
-                Patches
-              </Link>
-            </nav>
           </div>
         </header>
         <main>

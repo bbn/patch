@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Patch } from "@/lib/models/Patch";
 
 interface PatchSummary {
@@ -21,48 +20,83 @@ export default function PatchesPage() {
   const [newPatchName, setNewPatchName] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadPatches() {
+  const loadPatches = async () => {
+    try {
+      setLoading(true);
+      
+      // Try to load patches from localStorage first for immediate display
+      let patchList: PatchSummary[] = [];
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('patches');
+        if (saved) {
+          patchList = JSON.parse(saved);
+          // Sort and show immediately
+          const sortedPatches = [...patchList].sort((a, b) => b.updatedAt - a.updatedAt);
+          setPatches(sortedPatches);
+        }
+      }
+      
+      // Then try to load from the server model
       try {
-        setLoading(true);
+        // Bypass localStorage cache by directly fetching from API
+        const response = await fetch('/api/patches', { 
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         
-        // Try to load patches from localStorage first for immediate display
-        let patchList: PatchSummary[] = [];
-        if (typeof window !== 'undefined') {
-          const saved = localStorage.getItem('patches');
-          if (saved) {
-            patchList = JSON.parse(saved);
+        if (response.ok) {
+          const freshPatches = await response.json();
+          
+          // Log details for debugging
+          freshPatches.forEach((patch: PatchSummary) => {
+            console.log(`API: Patch ${patch.id} - ${patch.name} has ${patch.nodeCount} nodes`);
+          });
+          
+          // Sort patches by updatedAt in reverse chronological order
+          const sortedPatches = [...freshPatches].sort((a, b) => b.updatedAt - a.updatedAt);
+          setPatches(sortedPatches);
+          
+          // Update localStorage with the sorted fresh data
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('patches', JSON.stringify(sortedPatches));
           }
+          return;
         }
         
-        // Then try to load from the server model
-        try {
-          const allPatches = await Patch.findAll();
-          if (allPatches.length > 0) {
-            patchList = allPatches.map(patch => ({
+        // If API fails, fallback to direct model access
+        const allPatches = await Patch.findAll();
+        if (allPatches.length > 0) {
+          patchList = allPatches.map(patch => {
+            console.log(`Model: Patch ${patch.id} - ${patch.name} has ${patch.nodes.length} nodes:`, patch.nodes);
+            return {
               id: patch.id,
               name: patch.name,
               description: patch.description,
               updatedAt: patch.updatedAt,
-              nodeCount: patch.nodes.length
-            }));
-            
-            // Update localStorage with the server data
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('patches', JSON.stringify(patchList));
-            }
+              nodeCount: patch.nodes.length || 0
+            };
+          });
+          
+          // Sort patches by updatedAt in reverse chronological order
+          const sortedPatches = [...patchList].sort((a, b) => b.updatedAt - a.updatedAt);
+          
+          // Update localStorage with the sorted server data
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('patches', JSON.stringify(sortedPatches));
           }
-        } catch (error) {
-          console.error("Error loading patches from server:", error);
-          // Continue with localStorage data if server fetch fails
+          
+          setPatches(sortedPatches);
         }
-        
-        setPatches(patchList);
-      } finally {
-        setLoading(false);
+      } catch (error) {
+        console.error("Error loading patches from server:", error);
+        // Continue with localStorage data if server fetch fails
       }
+    } finally {
+      setLoading(false);
     }
-    
+  };
+  
+  useEffect(() => {
     loadPatches();
   }, []);
 
@@ -114,25 +148,6 @@ export default function PatchesPage() {
 
   return (
     <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Patches</h1>
-        <div className="flex space-x-2">
-          <Input
-            placeholder="New patch name"
-            value={newPatchName}
-            onChange={(e) => setNewPatchName(e.target.value)}
-            className="w-64"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newPatchName.trim()) {
-                handleCreatePatch();
-              }
-            }}
-          />
-          <Button onClick={handleCreatePatch} disabled={!newPatchName.trim()}>
-            Create Patch
-          </Button>
-        </div>
-      </div>
 
       {loading ? (
         <div className="flex justify-center p-8">
@@ -140,10 +155,27 @@ export default function PatchesPage() {
         </div>
       ) : patches.length === 0 ? (
         <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <p className="text-gray-500">No patches yet. Create your first patch above!</p>
+          <p className="text-gray-500">No patches yet. Create your first patch!</p>
+          <Button onClick={() => {
+            setNewPatchName("New Patch");
+            handleCreatePatch();
+          }} className="mt-4">
+            Create Patch
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow bg-gray-50 border-dashed border-2 flex flex-col items-center justify-center text-center p-6"
+            onClick={() => {
+              setNewPatchName("New Patch");
+              handleCreatePatch();
+            }}
+          >
+            <div className="text-4xl mb-2">+</div>
+            <CardTitle>Create New Patch</CardTitle>
+          </Card>
+          
           {patches.map((patch) => (
             <Card 
               key={patch.id} 

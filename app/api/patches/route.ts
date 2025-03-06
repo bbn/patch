@@ -4,14 +4,41 @@ import { Patch } from "@/lib/models/Patch";
 export async function GET(request: NextRequest) {
   try {
     const patches = await Patch.findAll();
-    const patchSummaries = patches.map(patch => ({
-      id: patch.id,
-      name: patch.name,
-      description: patch.description,
-      nodeCount: patch.nodes.length,
-      updatedAt: patch.updatedAt,
-      createdAt: patch.createdAt,
-    }));
+    
+    // Get individual patch details to ensure latest node counts
+    const patchSummaries = await Promise.all(
+      patches.map(async patch => {
+        try {
+          // Force a fresh lookup for each patch
+          const freshPatch = await Patch.findById(patch.id);
+          if (freshPatch) {
+            const nodeCount = freshPatch.nodes.length;
+            console.log(`API route - Patch ${patch.id} (${patch.name}) has ${nodeCount} nodes`);
+            
+            return {
+              id: patch.id,
+              name: patch.name,
+              description: patch.description,
+              nodeCount: nodeCount,
+              updatedAt: patch.updatedAt,
+              createdAt: patch.createdAt,
+            };
+          }
+        } catch (err) {
+          console.error(`Error getting fresh data for patch ${patch.id}:`, err);
+        }
+        
+        // Fallback to original data
+        return {
+          id: patch.id,
+          name: patch.name,
+          description: patch.description,
+          nodeCount: patch.nodes.length,
+          updatedAt: patch.updatedAt,
+          createdAt: patch.createdAt,
+        };
+      })
+    );
     
     return NextResponse.json(patchSummaries);
   } catch (error) {
