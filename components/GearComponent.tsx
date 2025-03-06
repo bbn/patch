@@ -10,13 +10,22 @@ interface Gear {
 
 interface GearNodeProps {
   id: string;
-  data: { label: string };
+  data: { 
+    label: string;
+    isProcessing?: boolean;
+  };
   isConnectable: boolean;
 }
 
 const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
   return (
-    <div className="rounded-lg bg-white border-2 border-gray-200 p-4 w-40 h-20 flex items-center justify-center">
+    <div 
+      className={`rounded-lg bg-white border-2 p-4 w-40 h-20 flex items-center justify-center transition-all duration-300 ${
+        data.isProcessing 
+          ? "border-blue-500 shadow-md shadow-blue-200 animate-pulse" 
+          : "border-gray-200"
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}

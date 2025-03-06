@@ -21,10 +21,37 @@ import {
   ReactFlowInstance,
   OnNodesChange,
   OnEdgesChange,
+  Position,
+  Handle,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
 import { Gear } from "@/lib/models/Gear";
+
+// Custom node component for gears
+const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnectable: boolean }) => {
+  return (
+    <div 
+      className={`rounded-lg bg-white border-2 p-4 w-40 h-20 flex items-center justify-center transition-all duration-300 ${
+        data.isProcessing 
+          ? "border-blue-500 shadow-md shadow-blue-200 animate-pulse" 
+          : "border-gray-200"
+      }`}
+    >
+      <Handle
+        type="target"
+        position={Position.Left}
+        isConnectable={isConnectable}
+      />
+      <div>{data.label}</div>
+      <Handle
+        type="source"
+        position={Position.Right}
+        isConnectable={isConnectable}
+      />
+    </div>
+  );
+};
 
 export default function PatchPage() {
   const params = useParams();
@@ -37,12 +64,14 @@ export default function PatchPage() {
   type NodeData = {
     gearId: string;
     label: string;
+    isProcessing?: boolean;
   };
   
   const [nodes, setNodes] = useState<Node<NodeData>[]>([]);
   const [exampleInputs, setExampleInputs] = useState<any[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [saving, setSaving] = useState(false);
+  const [processingGears, setProcessingGears] = useState<Set<string>>(new Set());
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   
   // Track if we're currently connecting nodes
@@ -63,7 +92,18 @@ export default function PatchPage() {
           
           // Set state from patch data
           setPatchName(patchData.name);
-          setNodes(patchData.nodes);
+          
+          // Ensure all nodes use the gearNode type and have isProcessing property
+          const updatedNodes = patchData.nodes.map(node => ({
+            ...node,
+            type: 'gearNode',
+            data: {
+              ...node.data,
+              isProcessing: false
+            }
+          }));
+          
+          setNodes(updatedNodes);
           setEdges(patchData.edges);
         } else if (response.status === 404) {
           // Check for localStorage data for backwards compatibility
@@ -177,6 +217,11 @@ export default function PatchPage() {
   );
 
   // Handle adding a new gear node at a specific position
+  // Define node types
+  const nodeTypes = {
+    gearNode: GearNode
+  };
+
   const addGearNode = useCallback(async (position = { x: Math.random() * 300, y: Math.random() * 300 }) => {
     try {
       setSaving(true);
@@ -256,11 +301,12 @@ export default function PatchPage() {
       // Create a node representation with the same unique ID base
       const newNode: PatchNode = {
         id: nodeId,
-        type: 'default',
+        type: 'gearNode',
         position,
         data: {
           gearId: gear.id,
-          label: `Gear ${uniqueId.slice(0, 8)}`
+          label: `Gear ${uniqueId.slice(0, 8)}`,
+          isProcessing: false
         }
       };
       
@@ -450,6 +496,29 @@ export default function PatchPage() {
     
     // Add message to the gear
     try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
       const gear = await Gear.findById(gearId as string);
       if (gear) {
         await gear.addMessage({
@@ -462,6 +531,29 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error sending message to gear:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
     }
   };
 
@@ -475,6 +567,29 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
       const gear = await Gear.findById(gearId);
       if (gear) {
         // Try to parse as JSON if possible
@@ -494,6 +609,29 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error adding example input:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
     }
   };
   
@@ -506,6 +644,29 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
       const gear = await Gear.findById(gearId);
       if (gear) {
         // Try to parse as JSON if possible
@@ -525,6 +686,29 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error updating example input:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
     }
   };
   
@@ -558,6 +742,29 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
       const gear = await Gear.findById(gearId);
       if (gear) {
         await gear.processExampleInput(id);
@@ -567,6 +774,29 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error processing example input:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
     }
   };
   
@@ -579,6 +809,29 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
       const gear = await Gear.findById(gearId);
       if (gear) {
         await gear.processAllExamples();
@@ -588,6 +841,29 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error processing all example inputs:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
     }
   };
 
@@ -793,6 +1069,7 @@ export default function PatchPage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
+              nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
