@@ -101,12 +101,13 @@ export default function PatchesPage() {
   }, []);
 
   const handleCreatePatch = async () => {
-    if (!newPatchName.trim()) return;
+    // If name is empty, use a default name
+    const patchName = newPatchName.trim() || "New Patch";
     
     const patchId = `patch-${Date.now()}`;
     const newPatch = {
       id: patchId,
-      name: newPatchName.trim(),
+      name: patchName,
       description: "",
       updatedAt: Date.now(),
       nodeCount: 0
@@ -125,7 +126,7 @@ export default function PatchesPage() {
     try {
       await Patch.create({
         id: patchId,
-        name: newPatchName.trim()
+        name: patchName
       });
     } catch (error) {
       console.error("Error creating patch:", error);
@@ -156,10 +157,7 @@ export default function PatchesPage() {
       ) : patches.length === 0 ? (
         <div className="bg-gray-50 rounded-lg p-8 text-center">
           <p className="text-gray-500">No patches yet. Create your first patch!</p>
-          <Button onClick={() => {
-            setNewPatchName("New Patch");
-            handleCreatePatch();
-          }} className="mt-4">
+          <Button onClick={handleCreatePatch} className="mt-4">
             Create Patch
           </Button>
         </div>
@@ -167,10 +165,7 @@ export default function PatchesPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card 
             className="cursor-pointer hover:shadow-md transition-shadow bg-gray-50 border-dashed border-2 flex flex-col items-center justify-center text-center p-6"
-            onClick={() => {
-              setNewPatchName("New Patch");
-              handleCreatePatch();
-            }}
+            onClick={handleCreatePatch}
           >
             <div className="text-4xl mb-2">+</div>
             <CardTitle>Create New Patch</CardTitle>
