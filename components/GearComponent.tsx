@@ -6,6 +6,7 @@ interface Gear {
   id: string;
   outputUrls: string[];
   messages: { role: string; content: string }[];
+  label?: string;
 }
 
 interface GearNodeProps {
@@ -18,9 +19,14 @@ interface GearNodeProps {
 }
 
 const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
+  // Truncate label if it's too long to fit in the node
+  const displayLabel = data.label.length > 25 
+    ? data.label.substring(0, 22) + '...' 
+    : data.label;
+    
   return (
     <div 
-      className={`rounded-lg bg-white border-2 p-4 w-40 h-20 flex items-center justify-center transition-all duration-300 ${
+      className={`rounded-lg bg-white border-2 p-2 w-[160px] h-[80px] flex items-center justify-center overflow-hidden transition-all duration-300 ${
         data.isProcessing 
           ? "border-blue-500 shadow-md shadow-blue-200 animate-pulse" 
           : "border-gray-200"
@@ -31,7 +37,9 @@ const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
         position={Position.Top}
         isConnectable={isConnectable}
       />
-      <div>{data.label}</div>
+      <div className="text-center text-sm truncate max-w-[140px]" title={data.label}>
+        {displayLabel}
+      </div>
       <Handle
         type="source"
         position={Position.Bottom}
@@ -54,7 +62,7 @@ export const GearComponent: React.FC<GearComponentProps> = ({
     {
       id: gear.id,
       type: "gearNode",
-      data: { label: `Gear ${gear.id}` },
+      data: { label: gear.label || `Gear ${gear.id.slice(0, 8)}` },
       position: { x: 0, y: 0 },
     },
   ];
@@ -73,6 +81,7 @@ export const GearComponent: React.FC<GearComponentProps> = ({
         nodeTypes={nodeTypes}
         fitView
         className="bg-white rounded-lg"
+        proOptions={{ hideAttribution: true }}
       />
     </div>
   );

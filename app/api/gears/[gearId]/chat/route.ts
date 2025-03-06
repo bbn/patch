@@ -13,11 +13,11 @@ export async function POST(
   try {
     const resolvedParams = await params;
     console.log("Chat API called with gearId:", resolvedParams.gearId);
-    const { messages } = await request.json();
+    const { messages, special } = await request.json();
     const gearId = resolvedParams.gearId;
 
     // Try to find the gear
-    let gear = await Gear.findById(gearId);
+    const gear = await Gear.findById(gearId);
     
     if (!gear) {
       console.log("Chat API: Gear not found:", gearId);
@@ -26,6 +26,24 @@ export async function POST(
     
     console.log(`Chat API: Found gear with ${gear.messages.length} messages`);
 
+    // Special requests are now deprecated - we have a separate label endpoint
+    if (special === true) {
+      console.warn("WARNING: Using deprecated 'special' flag in chat API. Use the dedicated /label endpoint instead.");
+      
+      // Keep this for backward compatibility, but log the warning
+      const result = await streamText({
+        model: openai('gpt-4o-mini'),
+        messages: messages,
+        experimental_generateMessageId: createIdGenerator({
+          prefix: 'special',
+          size: 16,
+        }),
+      });
+      
+      return result.toDataStreamResponse();
+    }
+
+    // Normal chat flow - not a special request
     // Create GearChat instance
     const gearChat = new GearChat(gear.messages, gearId);
     
@@ -65,11 +83,30 @@ export async function POST(
         // Add the assistant response to the GearChat
         const assistantMessage = response.messages.find(msg => msg.role === "assistant");
         if (assistantMessage) {
+          let content = "";
+          
+          // Safely handle different types of content
+          if (typeof assistantMessage.content === 'string') {
+            content = assistantMessage.content;
+          } else if (Array.isArray(assistantMessage.content)) {
+            // For content arrays (e.g. with function calls), extract text parts
+            content = assistantMessage.content
+              .filter(part => part.type === 'text')
+              .map(part => part.text)
+              .join('');
+          } else if (assistantMessage.content && typeof assistantMessage.content === 'object') {
+            // Try to safely stringify the object
+            try {
+              content = JSON.stringify(assistantMessage.content);
+            } catch (e) {
+              console.error('Failed to stringify assistant content:', e);
+              content = "Error: Could not process assistant response";
+            }
+          }
+          
           await gearChat.addMessage({
             role: "assistant",
-            content: typeof assistantMessage.content === 'string' 
-              ? assistantMessage.content 
-              : JSON.stringify(assistantMessage.content)
+            content: content
           });
         }
         

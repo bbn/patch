@@ -73,6 +73,8 @@ export default function PatchPage() {
   const [saving, setSaving] = useState(false);
   const [processingGears, setProcessingGears] = useState<Set<string>>(new Set());
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
+  const [dataModified, setDataModified] = useState(false);
+  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null);
   
   // Track if we're currently connecting nodes
   const [isConnecting, setIsConnecting] = useState(false);
@@ -84,6 +86,9 @@ export default function PatchPage() {
   useEffect(() => {
     async function loadPatch() {
       try {
+        // Reset modification flag when loading a new patch
+        setDataModified(false);
+        
         // Load from API which uses server-side KV
         const response = await fetch(`/api/patches/${patchId}`);
         
@@ -191,6 +196,9 @@ export default function PatchPage() {
       // Update edges state
       setEdges((eds) => addEdge(connection, eds));
       
+      // Mark data as modified since user added an edge
+      setDataModified(true);
+      
       try {
         const patch = await Patch.findById(patchId);
         if (patch) {
@@ -213,7 +221,7 @@ export default function PatchPage() {
         console.error("Error saving edge:", error);
       }
     },
-    [setEdges, patchId, nodes, setRecentConnection, setIsConnecting],
+    [setEdges, patchId, nodes, setRecentConnection, setIsConnecting, setDataModified],
   );
 
   // Handle adding a new gear node at a specific position
@@ -314,6 +322,8 @@ export default function PatchPage() {
       const currentNodeIds = new Set(nodes.map(n => n.id));
       if (!currentNodeIds.has(nodeId)) {
         setNodes(prevNodes => [...prevNodes, newNode]);
+        // Mark data as modified since user added a node
+        setDataModified(true);
       }
       
       // Save to the patch
@@ -332,7 +342,7 @@ export default function PatchPage() {
     } finally {
       setSaving(false);
     }
-  }, [patchId, setNodes]);
+  }, [patchId, setNodes, setDataModified]);
 
   // Handle node selection
   const onNodeClick = useCallback(async (_: React.MouseEvent, node: Node) => {
@@ -460,7 +470,7 @@ export default function PatchPage() {
       y: event.clientY
     });
     
-    // Node dimensions
+    // Node dimensions (must match the GearNode component dimensions)
     const nodeWidth = 160;
     const nodeHeight = 80;
     
@@ -482,7 +492,7 @@ export default function PatchPage() {
   }, [reactFlowInstance, addGearNode, nodes.length, isConnecting, wasConnectionJustMade]);
 
   // Handle message sent to a gear
-  const handleMessageSent = async (message: { role: string; content: string }) => {
+  const handleMessageSent = useCallback(async (message: { role: string; content: string }) => {
     if (!selectedNode) return;
     
     // Find the gear for this node
@@ -525,9 +535,64 @@ export default function PatchPage() {
           role: message.role as "user" | "assistant" | "system",
           content: message.content
         });
+        
         // After adding a message, the gear will automatically process all examples,
         // so we need to update our local state with the updated examples
         setExampleInputs(gear.exampleInputs);
+        
+        // If the message was from the assistant, a label may have been generated
+        // Update the node's label from the gear
+        if (message.role === "assistant") {
+          console.log("UI DEBUG: Assistant message detected, checking for updated label");
+          
+          // Refetch the gear to get the updated label - IMPORTANT: use the API directly to ensure we get fresh data
+          console.log(`UI DEBUG: Refetching gear ${gearId} to get updated label directly from API`);
+          const freshResponse = await fetch(`/api/gears/${gearId}`);
+          
+          let updatedGear = null;
+          if (freshResponse.ok) {
+            updatedGear = await freshResponse.json();
+            console.log(`UI DEBUG: Fresh API data for gear:`, updatedGear);
+          } else {
+            console.log(`UI DEBUG: Failed to get fresh gear data from API, falling back to Gear.findById`);
+            updatedGear = await Gear.findById(gearId as string);
+          }
+          
+          console.log(`UI DEBUG: Refetched gear, label = "${updatedGear?.label}"`);
+          
+          if (updatedGear && updatedGear.label) {
+            console.log(`UI DEBUG: Updating node ${selectedNode} label to "${updatedGear.label}"`);
+            
+            // Update the node's label in the UI
+            setNodes(prev => {
+              console.log("UI DEBUG: Current nodes before update:", prev);
+              
+              const newNodes = prev.map(n => {
+                if (n.id === selectedNode) {
+                  // Update the node's label
+                  console.log(`UI DEBUG: Found node ${n.id}, updating label from "${n.data.label}" to "${updatedGear.label}"`);
+                  return {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      label: updatedGear.label
+                    }
+                  };
+                }
+                return n;
+              });
+              
+              console.log("UI DEBUG: Nodes after update:", newNodes);
+              return newNodes;
+            });
+            
+            // Mark data as modified to trigger a save
+            console.log("UI DEBUG: Setting dataModified = true");
+            setDataModified(true);
+          } else {
+            console.log(`UI DEBUG: No valid label found on refetched gear:`, updatedGear);
+          }
+        }
       }
     } catch (error) {
       console.error("Error sending message to gear:", error);
@@ -555,7 +620,7 @@ export default function PatchPage() {
         })
       );
     }
-  };
+  }, [selectedNode, nodes]);
 
   // Example input handlers
   const handleAddExample = async (name: string, inputData: string) => {
@@ -936,15 +1001,19 @@ export default function PatchPage() {
     }
   }, [reactFlowInstance, nodes.length]);
   
-  // Effect to save patch automatically after changes
+  // Effect to handle debounced saving
   useEffect(() => {
     // Don't save on initial empty state
     if (nodes.length === 0 && edges.length === 0) return;
     
-    // Only save if we've actually loaded data
-    if (patchName) {
-      // Inline save function to avoid circular references
-      const saveChanges = async () => {
+    // Only schedule save if we've actually loaded data AND data has been modified
+    if (patchName && dataModified) {
+      console.log("Scheduling debounced save in 2 seconds");
+      
+      // Create a new timeout that will run after 2 seconds of inactivity
+      const timeoutId = setTimeout(async () => {
+        console.log("Executing debounced save - no changes for 2 seconds");
+        
         try {
           setSaving(true);
           
@@ -988,16 +1057,30 @@ export default function PatchPage() {
             
             localStorage.setItem('patches', JSON.stringify(patches));
           }
+          
+          // Reset the dataModified flag after successful save
+          setDataModified(false);
         } catch (error) {
           console.error("Error saving patch:", error);
         } finally {
           setSaving(false);
         }
-      };
+      }, 2000); // 2 second debounce delay
       
-      saveChanges();
+      // Clean up any existing timeout before setting a new one
+      if (saveTimeout) {
+        clearTimeout(saveTimeout);
+      }
+      
+      setSaveTimeout(timeoutId);
+      
+      // Cleanup function to clear timeout if component unmounts or dependencies change
+      return () => {
+        clearTimeout(timeoutId);
+      };
     }
-  }, [nodes, edges, patchName, patchId, setSaving]);
+  // Removing saveTimeout from dependency array to prevent infinite loops
+  }, [nodes, edges, patchName, patchId, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -1017,6 +1100,11 @@ export default function PatchPage() {
     (changes) => {
       // Apply changes to nodes with proper typing
       setNodes((nds) => applyNodeChanges(changes, nds) as Node<NodeData>[]);
+      
+      // Mark data as modified when user makes changes (except when just selected)
+      if (changes.some(change => change.type !== 'select')) {
+        setDataModified(true);
+      }
       
       // Check for node deletion
       const nodeDeletions = changes.filter(change => change.type === 'remove');
@@ -1040,93 +1128,144 @@ export default function PatchPage() {
         setSelectedNode(null);
       }
     },
-    [selectedNode, patchId]
+    [selectedNode, patchId, setDataModified]
   );
   
   // Handle edge changes
   const onEdgesChange: OnEdgesChange = useCallback(
     (changes) => {
       setEdges((eds) => applyEdgeChanges(changes, eds) as Edge[]);
+      
+      // Mark data as modified if edges are added or removed
+      if (changes.some(change => change.type === 'remove')) {
+        setDataModified(true);
+      }
     },
-    []
+    [setDataModified]
   );
   
-  // Function to save patch when called directly (not used in effects)
-  const savePatch = () => {
-    // This is just a trigger for the effect now
-    // Force a state update to trigger the useEffect
-    setNodes(nodes => [...nodes] as Node<NodeData>[]);
-  };
+  // Function to save patch immediately when called directly
+  const savePatch = useCallback(async () => {
+    // Clear any existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      setSaveTimeout(null);
+    }
+    
+    console.log("Executing immediate save");
+    
+    try {
+      setSaving(true);
+      
+      // Save via API
+      const response = await fetch(`/api/patches/${patchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: patchName,
+          description: "",
+          nodes,
+          edges,
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save patch: ${response.status}`);
+      }
+      
+      // Also update localStorage for backward compatibility
+      if (typeof window !== 'undefined') {
+        const savedPatches = localStorage.getItem('patches');
+        const patches = savedPatches ? JSON.parse(savedPatches) : [];
+        
+        const patchIndex = patches.findIndex((p: {id: string}) => p.id === patchId);
+        const updatedPatch = {
+          id: patchId,
+          name: patchName,
+          description: "",
+          updatedAt: Date.now(),
+          nodeCount: nodes.length,
+          nodes,
+          edges,
+        };
+        
+        if (patchIndex >= 0) {
+          patches[patchIndex] = updatedPatch;
+        } else {
+          patches.push(updatedPatch);
+        }
+        
+        localStorage.setItem('patches', JSON.stringify(patches));
+      }
+      
+      // Reset the dataModified flag after successful save
+      setDataModified(false);
+    } catch (error) {
+      console.error("Error saving patch:", error);
+    } finally {
+      setSaving(false);
+    }
+  // Removing saveTimeout and setSaveTimeout from dependency array to prevent infinite loops
+  }, [nodes, edges, patchName, patchId]);
 
   return (
-    <div className="container mx-auto p-4 h-[calc(100vh-3.5rem)]">
-      <Card className="h-full">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>{patchName}</CardTitle>
-        </CardHeader>
-        <CardContent className="h-[calc(100%-5rem)]">
-          <div className="h-full w-full">
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onConnectStart={onConnectStart}
-              onConnectEnd={onConnectEnd}
-              onNodeClick={onNodeClick}
-              onPaneClick={onPaneClick}
-              onInit={setReactFlowInstance}
-              nodesDraggable={true}
-              fitView={false}
-              defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Controls />
-              <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-              
-              {selectedNode && (
-                <Panel position="right" className="w-1/3 h-full bg-white shadow-lg rounded-lg overflow-hidden">
-                  <div className="h-full flex flex-col p-4">
-                    <div className="mb-4 flex justify-between items-center">
-                      <div>
-                        <h3 className="text-lg font-semibold">
-                          {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
-                        </h3>
-                        <p className="text-sm text-gray-500">
-                          ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
-                        </p>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => setSelectedNode(null)}
-                        className="h-8 w-8 p-0"
-                      >
-                        ✕
-                      </Button>
-                    </div>
-                    <div className="flex-grow h-[calc(100%-4rem)]">
-                      <ChatSidebar
-                        gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
-                        initialMessages={gearMessages}
-                        onMessageSent={handleMessageSent}
-                        exampleInputs={exampleInputs}
-                        onAddExample={handleAddExample}
-                        onUpdateExample={handleUpdateExample}
-                        onDeleteExample={handleDeleteExample}
-                        onProcessExample={handleProcessExample}
-                        onProcessAllExamples={handleProcessAllExamples}
-                      />
-                    </div>
-                  </div>
-                </Panel>
-              )}
-            </ReactFlow>
+    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
+      <div className="flex-1 pr-4">
+        <Card className="h-full">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>{patchName}</CardTitle>
+          </CardHeader>
+          <CardContent className="h-[calc(100%-5rem)]">
+            <div className="h-full w-full">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
+                onNodeClick={onNodeClick}
+                onPaneClick={onPaneClick}
+                onInit={setReactFlowInstance}
+                nodesDraggable={true}
+                fitView={false}
+                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+                proOptions={{ hideAttribution: true }}
+              >
+                <Controls />
+                <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+              </ReactFlow>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      {selectedNode && (
+        <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
+          <div className="mb-2 py-2">
+            <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
+              {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+            </h3>
+            <p className="text-xs text-gray-500 truncate">
+              ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex-grow overflow-hidden h-[calc(100%-3rem)]">
+            <ChatSidebar
+              gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
+              initialMessages={gearMessages}
+              onMessageSent={handleMessageSent}
+              exampleInputs={exampleInputs}
+              onAddExample={handleAddExample}
+              onUpdateExample={handleUpdateExample}
+              onDeleteExample={handleDeleteExample}
+              onProcessExample={handleProcessExample}
+              onProcessAllExamples={handleProcessAllExamples}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

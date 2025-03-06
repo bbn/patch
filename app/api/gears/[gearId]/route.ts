@@ -70,6 +70,10 @@ export async function GET(
     }
     
     console.log(`GET API: Found gear ${gearId}`);
+    
+    // Add logging for the label being sent to client
+    console.log(`GET API: Sending gear label: "${gear.label}" (length: ${gear.label.length})`);
+    
     return Response.json({
       id: gear.id,
       messages: gear.messages,
@@ -77,6 +81,7 @@ export async function GET(
       createdAt: gear.createdAt,
       updatedAt: gear.updatedAt,
       exampleInputs: gear.exampleInputs,
+      label: gear.label,
     });
   } catch (error) {
     console.error("Error getting gear:", error);
@@ -128,6 +133,16 @@ export async function PUT(
       console.log(`PUT API: Updating exampleInputs for gear ${gearId}`);
       // Replace example inputs using setter method
       await gear.setExampleInputs(updates.exampleInputs);
+      updated = true;
+    }
+    
+    if (updates.label !== undefined) {
+      console.log(`PUT API: Updating label for gear ${gearId} to "${updates.label}"`);
+      // Add more detailed log about the new label value and type
+      console.log(`NEW LABEL: "${updates.label}" (length: ${updates.label.length}, type: ${typeof updates.label})`);
+      
+      // Update the label
+      await gear.setLabel(updates.label);
       updated = true;
     }
     
