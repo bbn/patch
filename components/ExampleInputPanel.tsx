@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,34 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ExampleInput } from "@/lib/models/Gear";
+
+// Debounce utility function
+function useDebounce<T extends (...args: any[]) => Promise<void>>(
+  callback: T,
+  delay: number
+) {
+  const timerRef = useRef<number | null>(null);
+
+  return useCallback(
+    (...args: Parameters<T>) => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+      }
+
+      return new Promise<void>((resolve) => {
+        timerRef.current = window.setTimeout(async () => {
+          try {
+            await callback(...args);
+          } catch (err) {
+            console.error("Error in debounced callback:", err);
+          }
+          resolve();
+        }, delay);
+      });
+    },
+    [callback, delay]
+  );
+}
 
 interface ExampleInputPanelProps {
   gearId: string;
@@ -40,10 +68,28 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
 }) => {
   const [newExampleName, setNewExampleName] = useState("");
   const [newExampleInput, setNewExampleInput] = useState("");
-  const [editMode, setEditMode] = useState<Record<string, boolean>>({});
-  const [editingName, setEditingName] = useState<Record<string, string>>({});
-  const [editingInput, setEditingInput] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  
+  // Initialize input values from examples
+  useEffect(() => {
+    const initialValues: Record<string, string> = {};
+    examples.forEach(example => {
+      initialValues[example.id] = typeof example.input === 'string' 
+        ? example.input 
+        : JSON.stringify(example.input, null, 2);
+    });
+    setInputValues(initialValues);
+  }, [examples]);
+
+  // Create debounced update function
+  const debouncedUpdate = useDebounce(async (id: string, input: string) => {
+    const example = examples.find(ex => ex.id === id);
+    if (!example) return;
+    
+    await onUpdateExample(id, example.name, input);
+    await onProcessExample(id);
+  }, 750);
 
   const handleAddExample = async () => {
     if (!newExampleName.trim() || !newExampleInput.trim()) return;
@@ -55,37 +101,28 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     setNewExampleInput("");
   };
 
-  const handleEditExample = (example: ExampleInput) => {
-    setEditMode({ ...editMode, [example.id]: true });
-    setEditingName({ ...editingName, [example.id]: example.name });
-    setEditingInput({ 
-      ...editingInput, 
-      [example.id]: typeof example.input === 'string' 
-        ? example.input 
-        : JSON.stringify(example.input, null, 2) 
-    });
-  };
-
-  const handleSaveEdit = async (id: string) => {
-    await onUpdateExample(
-      id, 
-      editingName[id], 
-      editingInput[id]
-    );
+  const handleInputChange = (id: string, value: string) => {
+    // Update the input value immediately
+    setInputValues(prev => ({ ...prev, [id]: value }));
     
-    setEditMode({ ...editMode, [id]: false });
-  };
-
-  const handleCancelEdit = (id: string) => {
-    setEditMode({ ...editMode, [id]: false });
+    // Use the debounced function to update and process
+    try {
+      debouncedUpdate(id, value).catch(err => {
+        console.error("Error in debounced update:", err);
+      });
+    } catch (error) {
+      console.error("Error initiating debounced update:", error);
+    }
   };
 
   const handleProcessExample = async (id: string) => {
-    setIsProcessing({ ...isProcessing, [id]: true });
+    setIsProcessing(prev => ({ ...prev, [id]: true }));
     try {
       await onProcessExample(id);
+    } catch (error) {
+      console.error(`Error processing example ${id}:`, error);
     } finally {
-      setIsProcessing({ ...isProcessing, [id]: false });
+      setIsProcessing(prev => ({ ...prev, [id]: false }));
     }
   };
 
@@ -99,6 +136,8 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     
     try {
       await onProcessAllExamples();
+    } catch (error) {
+      console.error("Error processing all examples:", error);
     } finally {
       setIsProcessing({});
     }
@@ -162,16 +201,8 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                 <div className="flex gap-2">
                   <Button 
                     size="sm" 
-                    variant="outline" 
-                    onClick={() => handleEditExample(example)}
-                    disabled={editMode[example.id] || isProcessing[example.id]}
-                  >
-                    Edit
-                  </Button>
-                  <Button 
-                    size="sm" 
                     onClick={() => handleProcessExample(example.id)}
-                    disabled={editMode[example.id] || isProcessing[example.id]}
+                    disabled={isProcessing[example.id]}
                   >
                     {isProcessing[example.id] ? "Processing..." : "Process"}
                   </Button>
@@ -179,7 +210,7 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                     size="sm" 
                     variant="destructive" 
                     onClick={() => onDeleteExample(example.id)}
-                    disabled={editMode[example.id] || isProcessing[example.id]}
+                    disabled={isProcessing[example.id]}
                   >
                     Delete
                   </Button>
@@ -187,57 +218,29 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
               </div>
               
               <AccordionContent>
-                {editMode[example.id] ? (
-                  <div className="space-y-4 mt-4">
-                    <Input
-                      placeholder="Example name"
-                      value={editingName[example.id]}
-                      onChange={(e) => setEditingName({ ...editingName, [example.id]: e.target.value })}
-                    />
+                <div className="space-y-4 mt-4">
+                  <div>
+                    <h4 className="font-medium mb-2">Input:</h4>
                     <Textarea
                       placeholder="Input data (text or JSON)"
-                      value={editingInput[example.id]}
-                      onChange={(e) => setEditingInput({ ...editingInput, [example.id]: e.target.value })}
+                      value={inputValues[example.id] || ''}
+                      onChange={(e) => handleInputChange(example.id, e.target.value)}
                       rows={3}
+                      className="font-mono text-sm"
                     />
-                    <div className="flex gap-2">
-                      <Button 
-                        onClick={() => handleSaveEdit(example.id)}
-                        disabled={!editingName[example.id]?.trim() || !editingInput[example.id]?.trim()}
-                      >
-                        Save
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleCancelEdit(example.id)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-4 mt-4">
+                  
+                  {example.output && (
                     <div>
-                      <h4 className="font-medium mb-2">Input:</h4>
+                      <h4 className="font-medium mb-2">
+                        Output <span className="text-xs text-gray-500">(Last processed: {formatDateTime(example.lastProcessed)})</span>:
+                      </h4>
                       <pre className="bg-gray-100 p-3 rounded-md overflow-x-auto text-sm">
-                        {typeof example.input === 'string' 
-                          ? example.input 
-                          : JSON.stringify(example.input, null, 2)}
+                        {formatOutput(example.output)}
                       </pre>
                     </div>
-                    
-                    {example.output && (
-                      <div>
-                        <h4 className="font-medium mb-2">
-                          Output <span className="text-xs text-gray-500">(Last processed: {formatDateTime(example.lastProcessed)})</span>:
-                        </h4>
-                        <pre className="bg-gray-100 p-3 rounded-md overflow-x-auto text-sm">
-                          {formatOutput(example.output)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
               </AccordionContent>
             </AccordionItem>
           ))}
