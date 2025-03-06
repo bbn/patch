@@ -1243,13 +1243,38 @@ export default function PatchPage() {
       </div>
       {selectedNode && (
         <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
-          <div className="mb-2 py-2">
-            <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
-              {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
-            </h3>
-            <p className="text-xs text-gray-500 truncate">
-              ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
-            </p>
+          <div className="mb-2 py-2 flex justify-between items-start">
+            <div>
+              <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
+                {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+              </h3>
+              <p className="text-xs text-gray-500 truncate">
+                ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
+              </p>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setSelectedNode(null)}
+              className="h-8 w-8 p-0 mt-1"
+            >
+              <span className="sr-only">Close</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </Button>
           </div>
           <div className="flex-grow overflow-hidden h-[calc(100%-3rem)]">
             <ChatSidebar

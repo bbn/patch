@@ -32,6 +32,7 @@ interface ChatSidebarProps {
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;
   onProcessAllExamples: () => Promise<void>;
+  onClose?: () => void;
 }
 
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -44,6 +45,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onDeleteExample,
   onProcessExample,
   onProcessAllExamples,
+  onClose,
 }) => {
   // Format initialMessages for the useChat hook
   const formattedInitialMessages = initialMessages.map(msg => ({
@@ -97,9 +99,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-white">
-      {/* Header with tabs */}
-      <div className="p-4 border-b flex justify-between items-center">
-        <h3 className="font-semibold">Gear Configuration</h3>
+      
+      {/* Tabs */}
+      <div className="p-4 border-b flex justify-center">
         <div className="flex">
           <Button
             variant={activeTab === 'chat' ? 'default' : 'outline'}
