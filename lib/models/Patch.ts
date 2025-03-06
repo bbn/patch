@@ -10,6 +10,7 @@ export interface PatchNode {
   data: {
     gearId: string;
     label: string;
+    isProcessing?: boolean;
   };
 }
 

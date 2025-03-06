@@ -99,7 +99,7 @@ export default function PatchPage() {
           setPatchName(patchData.name);
           
           // Ensure all nodes use the gearNode type and have isProcessing property
-          const updatedNodes = patchData.nodes.map(node => ({
+          const updatedNodes = patchData.nodes.map((node: PatchNode) => ({
             ...node,
             type: 'gearNode',
             data: {
