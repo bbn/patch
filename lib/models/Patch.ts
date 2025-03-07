@@ -320,7 +320,7 @@ export class Patch {
   }
   
   get description() {
-    return this.data.description;
+    return this.data.description || "";
   }
   
   set description(newDescription: string) {

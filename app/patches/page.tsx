@@ -6,6 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Patch } from "@/lib/models/Patch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface PatchSummary {
   id: string;
@@ -14,6 +25,7 @@ interface PatchSummary {
   updatedAt: number;
   nodeCount: number;
   isEditing?: boolean;
+  isDeleting?: boolean;
 }
 
 export default function PatchesPage() {
@@ -217,6 +229,46 @@ export default function PatchesPage() {
       console.error('Error updating patch name:', error);
     }
   };
+  
+  const handleDeletePatch = async (patchId: string) => {
+    // First update UI for immediate feedback
+    setPatches(prevPatches => 
+      prevPatches.map(patch => 
+        patch.id === patchId 
+          ? { ...patch, isDeleting: true } 
+          : patch
+      )
+    );
+    
+    try {
+      const success = await Patch.deleteById(patchId);
+      
+      if (success) {
+        // Remove from state if delete was successful
+        setPatches(prevPatches => prevPatches.filter(patch => patch.id !== patchId));
+      } else {
+        // If delete failed, revert the UI
+        setPatches(prevPatches => 
+          prevPatches.map(patch => 
+            patch.id === patchId 
+              ? { ...patch, isDeleting: false } 
+              : patch
+          )
+        );
+        console.error(`Failed to delete patch ${patchId}`);
+      }
+    } catch (error) {
+      // If delete encounters an error, revert the UI
+      setPatches(prevPatches => 
+        prevPatches.map(patch => 
+          patch.id === patchId 
+            ? { ...patch, isDeleting: false } 
+            : patch
+        )
+      );
+      console.error('Error deleting patch:', error);
+    }
+  };
 
   return (
     <div className="container mx-auto p-4">
@@ -245,32 +297,83 @@ export default function PatchesPage() {
           {patches.map((patch) => (
             <Card 
               key={patch.id} 
-              className="hover:shadow-md transition-shadow"
-              onClick={() => !patch.isEditing && handlePatchClick(patch.id)}
+              className={`hover:shadow-md transition-shadow ${patch.isDeleting ? 'opacity-50' : ''}`}
+              onClick={() => !patch.isEditing && !patch.isDeleting && handlePatchClick(patch.id)}
             >
-              <CardHeader className="pb-2">
-                {patch.isEditing ? (
-                  <form 
-                    onSubmit={(e) => savePatchName(e, patch.id)} 
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-full"
-                  >
-                    <Input
-                      autoFocus
-                      value={patch.name}
-                      onChange={(e) => handleNameChange(e, patch.id)}
-                      onBlur={(e) => savePatchName(e, patch.id)}
-                      className="font-semibold text-xl"
-                    />
-                  </form>
-                ) : (
-                  <CardTitle 
-                    onClick={(e) => startEditing(e, patch.id)}
-                    className="cursor-text hover:bg-gray-50 px-2 py-1 rounded -mx-2 transition-colors"
-                  >
-                    {patch.name}
-                  </CardTitle>
-                )}
+              <CardHeader className="pb-2 flex flex-row justify-between items-start">
+                <div className="flex-1">
+                  {patch.isEditing ? (
+                    <form 
+                      onSubmit={(e) => savePatchName(e, patch.id)} 
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full"
+                    >
+                      <Input
+                        autoFocus
+                        value={patch.name}
+                        onChange={(e) => handleNameChange(e, patch.id)}
+                        onBlur={(e) => savePatchName(e, patch.id)}
+                        className="font-semibold text-xl"
+                        disabled={patch.isDeleting}
+                      />
+                    </form>
+                  ) : (
+                    <CardTitle 
+                      onClick={(e) => !patch.isDeleting && startEditing(e, patch.id)}
+                      className={`cursor-text hover:bg-gray-50 px-2 py-1 rounded -mx-2 transition-colors ${patch.isDeleting ? 'cursor-not-allowed' : ''}`}
+                    >
+                      {patch.name}
+                    </CardTitle>
+                  )}
+                </div>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-gray-400 hover:text-red-600 h-8 w-8 p-0"
+                      onClick={(e) => e.stopPropagation()}
+                      disabled={patch.isDeleting}
+                    >
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        width="16" 
+                        height="16" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                      </svg>
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure you want to delete this patch?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the patch
+                        &ldquo;{patch.name}&rdquo; and all of its gear connections.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeletePatch(patch.id);
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </CardHeader>
               <CardContent>
                 <p className="text-gray-500">{patch.description || "No description"}</p>
@@ -278,8 +381,9 @@ export default function PatchesPage() {
                   {patch.nodeCount} gear{patch.nodeCount !== 1 ? 's' : ''}
                 </div>
               </CardContent>
-              <CardFooter className="text-xs text-gray-400">
-                Last updated: {formatDate(patch.updatedAt)}
+              <CardFooter className="text-xs text-gray-400 flex justify-between">
+                <span>Last updated: {formatDate(patch.updatedAt)}</span>
+                {patch.isDeleting && <span className="text-red-500">Deleting...</span>}
               </CardFooter>
             </Card>
           ))}
