@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Patch } from "@/lib/models/Patch";
 
 interface PatchSummary {
@@ -12,6 +13,7 @@ interface PatchSummary {
   description?: string;
   updatedAt: number;
   nodeCount: number;
+  isEditing?: boolean;
 }
 
 export default function PatchesPage() {
@@ -146,6 +148,75 @@ export default function PatchesPage() {
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleString();
   };
+  
+  const startEditing = (e: React.MouseEvent, patchId: string) => {
+    e.stopPropagation();
+    setPatches(prevPatches => 
+      prevPatches.map(patch => 
+        patch.id === patchId 
+          ? { ...patch, isEditing: true } 
+          : patch
+      )
+    );
+  };
+  
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>, patchId: string) => {
+    setPatches(prevPatches => 
+      prevPatches.map(patch => 
+        patch.id === patchId 
+          ? { ...patch, name: e.target.value } 
+          : patch
+      )
+    );
+  };
+  
+  const savePatchName = async (e: React.FormEvent<HTMLFormElement> | React.FocusEvent<HTMLInputElement>, patchId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Find the patch to save
+    const patchToSave = patches.find(p => p.id === patchId);
+    if (!patchToSave) return;
+    
+    // Exit edit mode first to improve UX responsiveness
+    setPatches(prevPatches => 
+      prevPatches.map(patch => 
+        patch.id === patchId 
+          ? { ...patch, isEditing: false } 
+          : patch
+      )
+    );
+    
+    try {
+      // Update in localStorage first for immediate feedback
+      if (typeof window !== 'undefined') {
+        const currentPatches = JSON.parse(localStorage.getItem('patches') || '[]');
+        const updatedLocalPatches = currentPatches.map((p: PatchSummary) => 
+          p.id === patchId ? { ...p, name: patchToSave.name, updatedAt: Date.now() } : p
+        );
+        localStorage.setItem('patches', JSON.stringify(updatedLocalPatches));
+      }
+      
+      // Update via API
+      const response = await fetch(`/api/patches/${patchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: patchToSave.name
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to update patch name:', errorText);
+        
+        // If API fails but localStorage worked, user will still see changes 
+        // until the page is refreshed, but the change won't persist to server
+      }
+    } catch (error) {
+      console.error('Error updating patch name:', error);
+    }
+  };
 
   return (
     <div className="container mx-auto p-4">
@@ -174,11 +245,32 @@ export default function PatchesPage() {
           {patches.map((patch) => (
             <Card 
               key={patch.id} 
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => handlePatchClick(patch.id)}
+              className="hover:shadow-md transition-shadow"
+              onClick={() => !patch.isEditing && handlePatchClick(patch.id)}
             >
-              <CardHeader>
-                <CardTitle>{patch.name}</CardTitle>
+              <CardHeader className="pb-2">
+                {patch.isEditing ? (
+                  <form 
+                    onSubmit={(e) => savePatchName(e, patch.id)} 
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full"
+                  >
+                    <Input
+                      autoFocus
+                      value={patch.name}
+                      onChange={(e) => handleNameChange(e, patch.id)}
+                      onBlur={(e) => savePatchName(e, patch.id)}
+                      className="font-semibold text-xl"
+                    />
+                  </form>
+                ) : (
+                  <CardTitle 
+                    onClick={(e) => startEditing(e, patch.id)}
+                    className="cursor-text hover:bg-gray-50 px-2 py-1 rounded -mx-2 transition-colors"
+                  >
+                    {patch.name}
+                  </CardTitle>
+                )}
               </CardHeader>
               <CardContent>
                 <p className="text-gray-500">{patch.description || "No description"}</p>

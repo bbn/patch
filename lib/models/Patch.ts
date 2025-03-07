@@ -315,8 +315,16 @@ export class Patch {
     return this.data.name;
   }
   
+  set name(newName: string) {
+    this.data.name = newName;
+  }
+  
   get description() {
     return this.data.description;
+  }
+  
+  set description(newDescription: string) {
+    this.data.description = newDescription;
   }
   
   get nodes() {

@@ -1,9 +1,10 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import {
   ReactFlow,
@@ -58,6 +59,8 @@ export default function PatchPage() {
   const patchId = params.patchId as string;
   
   const [patchName, setPatchName] = useState<string>("");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
   // Define a type for our node data
@@ -81,6 +84,55 @@ export default function PatchPage() {
   
   // Track recent edge connections to prevent adding gear when connection completes
   const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
+
+  // Handle starting patch name edit
+  const startEditingName = () => {
+    setIsEditingName(true);
+    // Focus the input after state update
+    setTimeout(() => nameInputRef.current?.focus(), 0);
+  };
+
+  // Handle saving patch name
+  const savePatchName = async () => {
+    setIsEditingName(false);
+    setDataModified(true);
+
+    try {
+      // Update localStorage for immediate feedback
+      if (typeof window !== 'undefined') {
+        const savedPatches = localStorage.getItem('patches');
+        if (savedPatches) {
+          const patches = JSON.parse(savedPatches);
+          const patchIndex = patches.findIndex((p: {id: string}) => p.id === patchId);
+          
+          if (patchIndex >= 0) {
+            patches[patchIndex] = {
+              ...patches[patchIndex],
+              name: patchName,
+              updatedAt: Date.now()
+            };
+            localStorage.setItem('patches', JSON.stringify(patches));
+          }
+        }
+      }
+      
+      // Update via API
+      const response = await fetch(`/api/patches/${patchId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: patchName
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to update patch name:', errorText);
+      }
+    } catch (error) {
+      console.error('Error updating patch name:', error);
+    }
+  };
 
   // Load patch data from API instead of direct KV access
   useEffect(() => {
@@ -1213,7 +1265,26 @@ export default function PatchPage() {
       <div className="flex-1 pr-4">
         <Card className="h-full">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{patchName}</CardTitle>
+            {isEditingName ? (
+              <div className="w-full max-w-xs">
+                <Input
+                  ref={nameInputRef}
+                  value={patchName}
+                  onChange={(e) => setPatchName(e.target.value)}
+                  onBlur={savePatchName}
+                  onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
+                  className="font-semibold text-xl"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <CardTitle 
+                onClick={startEditingName}
+                className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              >
+                {patchName}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
             <div className="h-full w-full">

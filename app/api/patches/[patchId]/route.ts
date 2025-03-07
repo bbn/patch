@@ -56,16 +56,28 @@ export async function PUT(
       });
     } else {
       // Update existing patch
+      if (body.name !== undefined) {
+        patch.name = body.name;
+      }
+      
+      if (body.description !== undefined) {
+        patch.description = body.description;
+      }
+      
       if (body.nodes) {
         await patch.updateFromReactFlow({
           nodes: body.nodes,
           edges: body.edges || []
         });
       }
+      
+      // Save the patch if any fields were updated
+      await patch.save();
     }
     
     return Response.json({
       id: patch.id,
+      name: patch.name,
       success: true
     });
   } catch (error) {
