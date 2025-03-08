@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,34 +18,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { ExampleInput } from "@/lib/models/Gear";
-
-// Debounce utility function
-function useDebounce<T extends (...args: any[]) => Promise<void>>(
-  callback: T,
-  delay: number
-) {
-  const timerRef = useRef<number | null>(null);
-
-  return useCallback(
-    (...args: Parameters<T>) => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-      }
-
-      return new Promise<void>((resolve) => {
-        timerRef.current = window.setTimeout(async () => {
-          try {
-            await callback(...args);
-          } catch (err) {
-            console.error("Error in debounced callback:", err);
-          }
-          resolve();
-        }, delay);
-      });
-    },
-    [callback, delay]
-  );
-}
 
 interface ExampleInputPanelProps {
   gearId: string;
@@ -70,6 +42,7 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   const [newExampleInput, setNewExampleInput] = useState("");
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [unsavedChanges, setUnsavedChanges] = useState<Record<string, boolean>>({});
   
   // Initialize input values from examples
   useEffect(() => {
@@ -80,16 +53,8 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
         : JSON.stringify(example.input, null, 2);
     });
     setInputValues(initialValues);
+    setUnsavedChanges({});
   }, [examples]);
-
-  // Create debounced update function
-  const debouncedUpdate = useDebounce(async (id: string, input: string) => {
-    const example = examples.find(ex => ex.id === id);
-    if (!example) return;
-    
-    await onUpdateExample(id, example.name, input);
-    await onProcessExample(id);
-  }, 750);
 
   const handleAddExample = async () => {
     if (!newExampleName.trim() || !newExampleInput.trim()) return;
@@ -102,20 +67,29 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   };
 
   const handleInputChange = (id: string, value: string) => {
-    // Update the input value immediately
+    // Update the input value immediately and mark it as unsaved
     setInputValues(prev => ({ ...prev, [id]: value }));
+    setUnsavedChanges(prev => ({ ...prev, [id]: true }));
+  };
+  
+  const handleSaveExample = async (id: string) => {
+    const example = examples.find(ex => ex.id === id);
+    if (!example) return;
     
-    // Use the debounced function to update and process
     try {
-      debouncedUpdate(id, value).catch(err => {
-        console.error("Error in debounced update:", err);
-      });
+      await onUpdateExample(id, example.name, inputValues[id]);
+      setUnsavedChanges(prev => ({ ...prev, [id]: false }));
     } catch (error) {
-      console.error("Error initiating debounced update:", error);
+      console.error(`Error saving example ${id}:`, error);
     }
   };
 
   const handleProcessExample = async (id: string) => {
+    // Don't process if there are unsaved changes
+    if (unsavedChanges[id]) {
+      return;
+    }
+    
     setIsProcessing(prev => ({ ...prev, [id]: true }));
     try {
       await onProcessExample(id);
@@ -127,7 +101,14 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   };
 
   const handleProcessAll = async () => {
-    const processingAll = examples.reduce((acc, example) => {
+    // Filter out examples with unsaved changes
+    const examplesWithoutChanges = examples.filter(example => !unsavedChanges[example.id]);
+    
+    if (examplesWithoutChanges.length === 0) {
+      return;
+    }
+    
+    const processingAll = examplesWithoutChanges.reduce((acc, example) => {
       acc[example.id] = true;
       return acc;
     }, {} as Record<string, boolean>);
@@ -162,7 +143,11 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
         <Button 
           size="sm" 
           onClick={handleProcessAll}
-          disabled={examples.length === 0 || Object.values(isProcessing).some(v => v)}
+          disabled={
+            examples.length === 0 || 
+            Object.values(isProcessing).some(v => v) ||
+            examples.some(ex => unsavedChanges[ex.id])
+          }
           className="text-xs py-1 px-2 h-auto"
         >
           Process All
@@ -206,14 +191,25 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                   {example.name}
                 </AccordionTrigger>
                 <div className="flex gap-1">
-                  <Button 
-                    size="sm" 
-                    onClick={() => handleProcessExample(example.id)}
-                    disabled={isProcessing[example.id]}
-                    className="text-xs py-0 px-2 h-6"
-                  >
-                    {isProcessing[example.id] ? "Processing..." : "Process"}
-                  </Button>
+                  {unsavedChanges[example.id] ? (
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleSaveExample(example.id)}
+                      disabled={isProcessing[example.id]}
+                      className="text-xs py-0 px-2 h-6"
+                    >
+                      Save
+                    </Button>
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleProcessExample(example.id)}
+                      disabled={isProcessing[example.id]}
+                      className="text-xs py-0 px-2 h-6"
+                    >
+                      {isProcessing[example.id] ? "Processing..." : "Process"}
+                    </Button>
+                  )}
                   <Button 
                     size="sm" 
                     variant="destructive" 
