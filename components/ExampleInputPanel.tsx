@@ -41,6 +41,7 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   const [newExampleName, setNewExampleName] = useState("");
   const [newExampleInput, setNewExampleInput] = useState("");
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [unsavedChanges, setUnsavedChanges] = useState<Record<string, boolean>>({});
   
@@ -76,11 +77,20 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     const example = examples.find(ex => ex.id === id);
     if (!example) return;
     
+    setIsSaving(prev => ({ ...prev, [id]: true }));
     try {
+      // First update the example
       await onUpdateExample(id, example.name, inputValues[id]);
+      
+      // Then process it
+      await onProcessExample(id);
+      
+      // Clear the unsaved changes flag
       setUnsavedChanges(prev => ({ ...prev, [id]: false }));
     } catch (error) {
       console.error(`Error saving example ${id}:`, error);
+    } finally {
+      setIsSaving(prev => ({ ...prev, [id]: false }));
     }
   };
 
@@ -146,11 +156,17 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
           disabled={
             examples.length === 0 || 
             Object.values(isProcessing).some(v => v) ||
+            Object.values(isSaving).some(v => v) ||
             examples.some(ex => unsavedChanges[ex.id])
           }
           className="text-xs py-1 px-2 h-auto"
         >
-          Process All
+          {Object.values(isProcessing).some(v => v) ? (
+            <>
+              <span className="inline-block animate-spin mr-1">⟳</span>
+              Processing...
+            </>
+          ) : "Process All"}
         </Button>
       </div>
       {/* Add new example form */}
@@ -195,10 +211,15 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                     <Button 
                       size="sm" 
                       onClick={() => handleSaveExample(example.id)}
-                      disabled={isProcessing[example.id]}
+                      disabled={isSaving[example.id] || isProcessing[example.id]}
                       className="text-xs py-0 px-2 h-6"
                     >
-                      Save
+                      {isSaving[example.id] ? (
+                        <>
+                          <span className="inline-block animate-spin mr-1">⟳</span>
+                          Saving...
+                        </>
+                      ) : "Save"}
                     </Button>
                   ) : (
                     <Button 
@@ -207,14 +228,19 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                       disabled={isProcessing[example.id]}
                       className="text-xs py-0 px-2 h-6"
                     >
-                      {isProcessing[example.id] ? "Processing..." : "Process"}
+                      {isProcessing[example.id] ? (
+                        <>
+                          <span className="inline-block animate-spin mr-1">⟳</span>
+                          Processing
+                        </>
+                      ) : "Process"}
                     </Button>
                   )}
                   <Button 
                     size="sm" 
                     variant="destructive" 
                     onClick={() => onDeleteExample(example.id)}
-                    disabled={isProcessing[example.id]}
+                    disabled={isProcessing[example.id] || isSaving[example.id]}
                     className="text-xs py-0 px-2 h-6"
                   >
                     Delete
