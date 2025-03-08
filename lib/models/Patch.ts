@@ -387,7 +387,7 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
-          const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+          const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
           await sourceGear.addOutputUrl(targetGearUrl);
         }
       }
@@ -416,7 +416,7 @@ export class Patch {
         if (oldSourceNode && oldTargetNode) {
           const oldSourceGear = await Gear.findById(oldSourceNode.data.gearId);
           if (oldSourceGear) {
-            const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}/process`;
+            const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}`;
             await oldSourceGear.removeOutputUrl(oldTargetUrl);
           }
         }
@@ -428,7 +428,7 @@ export class Patch {
         if (newSourceNode && newTargetNode) {
           const newSourceGear = await Gear.findById(newSourceNode.data.gearId);
           if (newSourceGear) {
-            const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}/process`;
+            const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}`;
             await newSourceGear.addOutputUrl(newTargetUrl);
           }
         }
@@ -458,7 +458,7 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
-          const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+          const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
           await sourceGear.removeOutputUrl(targetGearUrl);
         }
       }
@@ -500,7 +500,7 @@ export class Patch {
           if (sourceNode && targetNode) {
             const sourceGear = await Gear.findById(sourceNode.data.gearId);
             if (sourceGear) {
-              const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+              const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
               await sourceGear.removeOutputUrl(targetGearUrl);
             }
           }
@@ -520,7 +520,7 @@ export class Patch {
           if (sourceNode && targetNode) {
             const sourceGear = await Gear.findById(sourceNode.data.gearId);
             if (sourceGear) {
-              const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+              const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
               await sourceGear.addOutputUrl(targetGearUrl);
             }
           }
