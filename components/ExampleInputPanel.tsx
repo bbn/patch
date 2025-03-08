@@ -156,53 +156,61 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   };
 
   return (
-    <div className="w-full h-full overflow-y-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium">Example Inputs</h3>
+    <div className="w-full h-full overflow-y-auto text-xs">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-sm font-medium">Example Inputs</h3>
         <Button 
           size="sm" 
           onClick={handleProcessAll}
           disabled={examples.length === 0 || Object.values(isProcessing).some(v => v)}
+          className="text-xs py-1 px-2 h-auto"
         >
           Process All
         </Button>
       </div>
       {/* Add new example form */}
-      <div className="space-y-4 mb-6 pb-6 border-b">
+      <div className="space-y-2 mb-3 pb-3 border-b">
         <Input
           placeholder="Example name"
           value={newExampleName}
           onChange={(e) => setNewExampleName(e.target.value)}
+          className="text-xs h-7"
         />
         <Textarea
           placeholder="Input data (text or JSON)"
           value={newExampleInput}
           onChange={(e) => setNewExampleInput(e.target.value)}
-          rows={3}
+          rows={2}
+          className="text-xs"
         />
-        <Button onClick={handleAddExample} disabled={!newExampleName.trim() || !newExampleInput.trim()}>
+        <Button 
+          onClick={handleAddExample} 
+          disabled={!newExampleName.trim() || !newExampleInput.trim()}
+          className="text-xs py-1 px-2 h-7"
+        >
           Add Example
         </Button>
       </div>
 
       {/* Example list */}
       {examples.length === 0 ? (
-        <div className="text-center text-gray-500 my-4">
+        <div className="text-center text-gray-500 my-2 text-xs">
           No examples added yet
         </div>
       ) : (
-        <Accordion type="multiple" className="space-y-4">
+        <Accordion type="multiple" className="space-y-2">
           {examples.map((example) => (
-            <AccordionItem key={example.id} value={example.id} className="border rounded-lg p-2">
+            <AccordionItem key={example.id} value={example.id} className="border rounded-lg p-1">
               <div className="flex justify-between items-center">
-                <AccordionTrigger className="hover:no-underline">
+                <AccordionTrigger className="hover:no-underline text-xs py-1">
                   {example.name}
                 </AccordionTrigger>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Button 
                     size="sm" 
                     onClick={() => handleProcessExample(example.id)}
                     disabled={isProcessing[example.id]}
+                    className="text-xs py-0 px-2 h-6"
                   >
                     {isProcessing[example.id] ? "Processing..." : "Process"}
                   </Button>
@@ -211,6 +219,7 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                     variant="destructive" 
                     onClick={() => onDeleteExample(example.id)}
                     disabled={isProcessing[example.id]}
+                    className="text-xs py-0 px-2 h-6"
                   >
                     Delete
                   </Button>
@@ -218,24 +227,24 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
               </div>
               
               <AccordionContent>
-                <div className="space-y-4 mt-4">
+                <div className="space-y-2 mt-2">
                   <div>
-                    <h4 className="font-medium mb-2">Input:</h4>
+                    <h4 className="font-medium mb-1 text-xs">Input:</h4>
                     <Textarea
                       placeholder="Input data (text or JSON)"
                       value={inputValues[example.id] || ''}
                       onChange={(e) => handleInputChange(example.id, e.target.value)}
-                      rows={3}
-                      className="font-mono text-sm"
+                      rows={2}
+                      className="font-mono text-xs"
                     />
                   </div>
                   
                   {example.output && (
                     <div>
-                      <h4 className="font-medium mb-2">
+                      <h4 className="font-medium mb-1 text-xs">
                         Output <span className="text-xs text-gray-500">(Last processed: {formatDateTime(example.lastProcessed)})</span>:
                       </h4>
-                      <pre className="bg-gray-100 p-3 rounded-md overflow-x-auto text-sm">
+                      <pre className="bg-gray-100 p-2 rounded-md overflow-x-auto text-xs">
                         {formatOutput(example.output)}
                       </pre>
                     </div>

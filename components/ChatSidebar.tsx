@@ -98,16 +98,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'chat' | 'examples'>('chat');
 
   return (
-    <div className="w-full h-full flex flex-col bg-white">
+    <div className="w-full h-full flex flex-col bg-white text-sm">
       
       {/* Tabs */}
-      <div className="p-4 border-b flex justify-center">
+      <div className="p-2 border-b flex justify-center">
         <div className="flex">
           <Button
             variant={activeTab === 'chat' ? 'default' : 'outline'}
             onClick={() => setActiveTab('chat')}
             size="sm"
-            className="rounded-r-none"
+            className="rounded-r-none text-xs"
           >
             Chat
           </Button>
@@ -115,7 +115,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             variant={activeTab === 'examples' ? 'default' : 'outline'}
             onClick={() => setActiveTab('examples')}
             size="sm" 
-            className="rounded-l-none"
+            className="rounded-l-none text-xs"
           >
             Examples
           </Button>
@@ -126,14 +126,14 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {activeTab === 'chat' && (
         <>
           {/* Messages container */}
-          <div className="flex-grow overflow-y-auto p-4">
+          <div className="flex-grow overflow-y-auto p-3">
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={`mb-4 ${m.role === "user" ? "text-right" : "text-left"}`}
+                className={`mb-2 ${m.role === "user" ? "text-right" : "text-left"}`}
               >
                 <span
-                  className={`inline-block p-2 rounded-lg ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
+                  className={`inline-block p-1.5 rounded-lg text-xs ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
                 >
                   {m.content}
                 </span>
@@ -141,7 +141,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             ))}
             {isLoading && (
               <div className="text-left">
-                <span className="inline-block p-2 rounded-lg bg-gray-200 text-black">
+                <span className="inline-block p-1.5 rounded-lg text-xs bg-gray-200 text-black">
                   AI is thinking...
                 </span>
               </div>
@@ -149,15 +149,15 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
           
           {/* Input form */}
-          <div className="p-4 border-t mt-auto">
+          <div className="p-2 border-t mt-auto">
             <form onSubmit={handleFormSubmit} className="flex w-full space-x-2">
               <Input
                 value={input}
                 onChange={handleInputChange}
                 placeholder="Type your message..."
-                className="flex-grow"
+                className="flex-grow text-xs"
               />
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading} className="text-xs">
                 Send
               </Button>
             </form>
@@ -167,7 +167,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
       {/* Examples Tab */}
       {activeTab === 'examples' && (
-        <div className="flex-grow overflow-y-auto p-4">
+        <div className="flex-grow overflow-y-auto p-2">
           <ExampleInputPanel
             gearId={gearId}
             examples={exampleInputs}
