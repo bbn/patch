@@ -27,6 +27,7 @@ interface ExampleInputPanelProps {
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;
   onProcessAllExamples: () => Promise<void>;
+  onSendOutput?: (id: string, output: any) => Promise<void>;
 }
 
 export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
@@ -37,11 +38,13 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   onDeleteExample,
   onProcessExample,
   onProcessAllExamples,
+  onSendOutput,
 }) => {
   const [newExampleName, setNewExampleName] = useState("");
   const [newExampleInput, setNewExampleInput] = useState("");
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
+  const [isSending, setIsSending] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [unsavedChanges, setUnsavedChanges] = useState<Record<string, boolean>>({});
   
@@ -145,6 +148,19 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     }
     return JSON.stringify(output, null, 2);
   };
+  
+  const handleSendOutput = async (id: string, output: any) => {
+    if (!onSendOutput || !output) return;
+    
+    setIsSending(prev => ({ ...prev, [id]: true }));
+    try {
+      await onSendOutput(id, output);
+    } catch (error) {
+      console.error(`Error sending example output ${id}:`, error);
+    } finally {
+      setIsSending(prev => ({ ...prev, [id]: false }));
+    }
+  };
 
   return (
     <div className="w-full h-full overflow-y-auto text-xs">
@@ -207,35 +223,19 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                   {example.name}
                 </AccordionTrigger>
                 <div className="flex gap-1">
-                  {unsavedChanges[example.id] ? (
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleSaveExample(example.id)}
-                      disabled={isSaving[example.id] || isProcessing[example.id]}
-                      className="text-xs py-0 px-2 h-6"
-                    >
-                      {isSaving[example.id] ? (
-                        <>
-                          <span className="inline-block animate-spin mr-1">⟳</span>
-                          Saving...
-                        </>
-                      ) : "Save"}
-                    </Button>
-                  ) : (
-                    <Button 
-                      size="sm" 
-                      onClick={() => handleProcessExample(example.id)}
-                      disabled={isProcessing[example.id]}
-                      className="text-xs py-0 px-2 h-6"
-                    >
-                      {isProcessing[example.id] ? (
-                        <>
-                          <span className="inline-block animate-spin mr-1">⟳</span>
-                          Processing
-                        </>
-                      ) : "Process"}
-                    </Button>
-                  )}
+                  <Button 
+                  size="sm" 
+                  onClick={() => handleSaveExample(example.id)}
+                  disabled={!unsavedChanges[example.id] || isSaving[example.id] || isProcessing[example.id]}
+                  className="text-xs py-0 px-2 h-6"
+                >
+                  {isSaving[example.id] ? (
+                    <>
+                      <span className="inline-block animate-spin mr-1">⟳</span>
+                      Saving...
+                    </>
+                  ) : "Save"}
+                </Button>
                   <Button 
                     size="sm" 
                     variant="destructive" 
@@ -269,6 +269,21 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
                       <pre className="bg-gray-100 p-2 rounded-md overflow-x-auto text-xs">
                         {formatOutput(example.output)}
                       </pre>
+                      {onSendOutput && (
+                        <Button 
+                          size="sm"
+                          className="w-full mt-2 text-xs h-7"
+                          onClick={() => handleSendOutput(example.id, example.output)}
+                          disabled={isSending[example.id] || !example.output}
+                        >
+                          {isSending[example.id] ? (
+                            <>
+                              <span className="inline-block animate-spin mr-1">⟳</span>
+                              Sending...
+                            </>
+                          ) : "Send Output"}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

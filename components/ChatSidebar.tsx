@@ -32,6 +32,7 @@ interface ChatSidebarProps {
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;
   onProcessAllExamples: () => Promise<void>;
+  onSendOutput?: (id: string, output: any) => Promise<void>;
   onClose?: () => void;
 }
 
@@ -45,6 +46,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onDeleteExample,
   onProcessExample,
   onProcessAllExamples,
+  onSendOutput,
   onClose,
 }) => {
   // Format initialMessages for the useChat hook
@@ -176,6 +178,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             onDeleteExample={onDeleteExample}
             onProcessExample={onProcessExample}
             onProcessAllExamples={onProcessAllExamples}
+            onSendOutput={onSendOutput}
           />
         </div>
       )}

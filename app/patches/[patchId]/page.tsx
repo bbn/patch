@@ -983,6 +983,74 @@ export default function PatchPage() {
       );
     }
   };
+  
+  // Handle sending an example output to connected gears
+  const handleSendOutput = async (exampleId: string, output: any) => {
+    if (!selectedNode) return;
+    
+    const node = nodes.find(n => n.id === selectedNode);
+    if (!node?.data?.gearId) return;
+    
+    const gearId = node.data.gearId;
+    
+    try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        // Forward this specific output to connected gears
+        await gear.forwardOutputToGears(output);
+        
+        console.log(`Sent output from example ${exampleId} to connected gears`);
+      }
+    } catch (error) {
+      console.error("Error sending example output:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
+    }
+  };
 
   // Debug function to check gear status
   const debugGear = async (gearId: string) => {
@@ -1358,6 +1426,7 @@ export default function PatchPage() {
               onDeleteExample={handleDeleteExample}
               onProcessExample={handleProcessExample}
               onProcessAllExamples={handleProcessAllExamples}
+              onSendOutput={handleSendOutput}
             />
           </div>
         </div>
