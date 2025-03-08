@@ -80,8 +80,8 @@ describe('Gear Output Forwarding', () => {
 
   test('forwardOutputToGears should send POST requests to all configured output URLs', async () => {
     // Arrange - add multiple output URLs
-    const outputUrl1 = 'https://example.com/gear1/process';
-    const outputUrl2 = 'https://example.com/gear2/process';
+    const outputUrl1 = '/api/gears/gear1';
+    const outputUrl2 = '/api/gears/gear2';
     sourceGear.addOutputUrl(outputUrl1);
     sourceGear.addOutputUrl(outputUrl2);
     
@@ -98,10 +98,13 @@ describe('Gear Output Forwarding', () => {
     // Assert - fetch should be called for each URL
     expect(global.fetch).toHaveBeenCalledTimes(2);
     
+    // For absolute URL conversion in tests
+    const baseUrl = 'http://localhost:3000';
+    
     // Check first call
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
-      outputUrl1,
+      `${baseUrl}${outputUrl1}`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +115,7 @@ describe('Gear Output Forwarding', () => {
     // Check second call
     expect(global.fetch).toHaveBeenNthCalledWith(
       2,
-      outputUrl2,
+      `${baseUrl}${outputUrl2}`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,7 +133,7 @@ describe('Gear Output Forwarding', () => {
 
   test('forwardOutputToGears should handle failed requests gracefully', async () => {
     // Arrange - add an output URL
-    const outputUrl = 'https://example.com/gear/process';
+    const outputUrl = '/api/gears/target-gear';
     sourceGear.addOutputUrl(outputUrl);
     
     // Mock a failed fetch response
@@ -153,7 +156,7 @@ describe('Gear Output Forwarding', () => {
 
   test('forwardOutputToGears should be called when process completes', async () => {
     // Arrange
-    const outputUrl = 'https://example.com/gear/process';
+    const outputUrl = '/api/gears/target-gear';
     sourceGear.addOutputUrl(outputUrl);
     
     // Mock successful fetch responses
@@ -171,9 +174,12 @@ describe('Gear Output Forwarding', () => {
     // Assert - forwardOutputToGears should be called with the output from processWithLLM
     expect(forwardSpy).toHaveBeenCalledWith('Mocked test output');
     
+    // For absolute URL conversion in tests
+    const baseUrl = 'http://localhost:3000';
+    
     // Verify fetch was called with the correct URL
     expect(global.fetch).toHaveBeenCalledWith(
-      outputUrl,
+      `${baseUrl}${outputUrl}`,
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -185,7 +191,7 @@ describe('Gear Output Forwarding', () => {
 
   test('forwardOutputToGears should handle network errors gracefully', async () => {
     // Arrange - add an output URL
-    const outputUrl = 'https://example.com/gear/process';
+    const outputUrl = '/api/gears/target-gear';
     sourceGear.addOutputUrl(outputUrl);
     
     // Mock a network error
@@ -208,7 +214,7 @@ describe('Gear Output Forwarding', () => {
     const mockOutput = 'Custom output for different input types test';
     sourceGear['processWithLLM'] = jest.fn().mockResolvedValue(mockOutput);
     
-    const outputUrl = 'https://example.com/gear/process';
+    const outputUrl = '/api/gears/target-gear';
     sourceGear.addOutputUrl(outputUrl);
     
     // Mock successful fetch response for the forwarding
@@ -232,10 +238,13 @@ describe('Gear Output Forwarding', () => {
     // Verify we got our expected output
     expect(output).toBe(mockOutput);
     
+    // For absolute URL conversion in tests
+    const baseUrl = 'http://localhost:3000';
+    
     // Verify the output was forwarded
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenCalledWith(
-      outputUrl,
+      `${baseUrl}${outputUrl}`,
       expect.objectContaining({
         method: 'POST',
         body: expect.stringContaining(sourceGear.id)

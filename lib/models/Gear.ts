@@ -12,6 +12,13 @@ export interface ExampleInput {
   lastProcessed?: number;
 }
 
+export interface GearLogEntry {
+  timestamp: number;
+  input: GearInput;
+  output?: GearOutput;
+  source?: string;
+}
+
 export interface GearData {
   id: string;
   outputUrls: string[];
@@ -22,6 +29,7 @@ export interface GearData {
   output?: GearOutput;
   exampleInputs?: ExampleInput[];
   label?: string;
+  log?: GearLogEntry[];
 }
 
 export class Gear {
@@ -39,6 +47,7 @@ export class Gear {
       output: data.output,
       exampleInputs: data.exampleInputs || [],
       label: data.label || `Gear ${data.id.slice(0, 8)}`,
+      log: data.log || [],
     };
     this.chat = new GearChat(this.data.messages, this.data.id);
   }
@@ -344,6 +353,10 @@ export class Gear {
 
   get label() {
     return this.data.label || `Gear ${this.data.id.slice(0, 8)}`;
+  }
+  
+  get log() {
+    return this.data.log || [];
   }
 
   async setLabel(label: string) {
@@ -945,7 +958,27 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     this.data.inputs[source] = input;
     this.data.updatedAt = Date.now();
     await this.save();
-    return this.process();
+    const output = await this.process();
+    
+    // Add to log
+    if (!this.data.log) {
+      this.data.log = [];
+    }
+    
+    this.data.log.unshift({
+      timestamp: Date.now(),
+      input,
+      output,
+      source
+    });
+    
+    // Limit log size to most recent 50 entries
+    if (this.data.log.length > 50) {
+      this.data.log = this.data.log.slice(0, 50);
+    }
+    
+    await this.save();
+    return output;
   }
 
   async addOutputUrl(url: string) {
@@ -986,19 +1019,59 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
   async process(input?: GearInput) {
     try {
+      const source = 'direct';
+      let output;
+      
       if (input !== undefined) {
         // For backward compatibility, if input is provided directly,
         // process just that input directly
-        const output = await this.processWithLLM(input);
+        output = await this.processWithLLM(input);
         this.data.output = output;
+        await this.save();
+        
+        // Log the processing
+        if (!this.data.log) {
+          this.data.log = [];
+        }
+        
+        this.data.log.unshift({
+          timestamp: Date.now(),
+          input,
+          output,
+          source
+        });
+        
+        // Limit log size to most recent 50 entries
+        if (this.data.log.length > 50) {
+          this.data.log = this.data.log.slice(0, 50);
+        }
+        
         await this.save();
         await this.forwardOutputToGears(output);
         return output;
       }
       
       // Process all inputs from the inputs dictionary
-      const output = await this.processWithLLM();
+      output = await this.processWithLLM();
       this.data.output = output;
+      
+      // Log processing of all inputs
+      if (!this.data.log) {
+        this.data.log = [];
+      }
+      
+      this.data.log.unshift({
+        timestamp: Date.now(),
+        input: this.data.inputs || {},
+        output,
+        source: 'combined'
+      });
+      
+      // Limit log size to most recent 50 entries
+      if (this.data.log.length > 50) {
+        this.data.log = this.data.log.slice(0, 50);
+      }
+      
       await this.save();
       await this.forwardOutputToGears(output);
       return output;
