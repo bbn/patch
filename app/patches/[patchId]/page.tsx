@@ -1068,6 +1068,55 @@ export default function PatchPage() {
     }
   };
 
+  // Handle clearing the log for the selected gear
+  const handleClearLog = async () => {
+    if (!selectedNode) return;
+    
+    const node = nodes.find(n => n.id === selectedNode);
+    if (!node?.data?.gearId) return;
+    
+    const gearId = node.data.gearId;
+    
+    try {
+      console.log(`Clearing log for gear ${gearId}`);
+      
+      // First clear the logs via the Gear model
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        await gear.clearLog();
+        
+        // Update local log entries state immediately for UI feedback
+        setLogEntries([]);
+        
+        // Then make a direct API request to ensure the server state is updated
+        const response = await fetch(`/api/gears/${gearId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            log: []
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to clear log via direct API call: ${response.status}`);
+        } else {
+          console.log(`Successfully cleared log via direct API call`);
+        }
+        
+        // Re-fetch the gear to verify logs are cleared
+        const refreshResponse = await fetch(`/api/gears/${gearId}`);
+        if (refreshResponse.ok) {
+          const refreshedGear = await refreshResponse.json();
+          console.log(`Refreshed gear log length: ${refreshedGear.log?.length || 0}`);
+          // Update our local state with the refreshed gear data
+          setLogEntries(refreshedGear.log || []);
+        }
+      }
+    } catch (error) {
+      console.error("Error clearing gear log:", error);
+    }
+  };
+
   // Debug function to check gear status
   const debugGear = async (gearId: string) => {
     if (!gearId) return;
@@ -1444,6 +1493,7 @@ export default function PatchPage() {
               onProcessExample={handleProcessExample}
               onProcessAllExamples={handleProcessAllExamples}
               onSendOutput={handleSendOutput}
+              onClearLog={handleClearLog}
             />
           </div>
         </div>

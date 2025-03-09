@@ -27,8 +27,25 @@ export async function POST(
   try {
     const resolvedParams = await params;
     console.log("Gear API called with gearId:", resolvedParams.gearId);
-    const { message, source } = await req.json();
+    const requestBody = await req.json();
     const gearId = resolvedParams.gearId;
+
+    // Handle both the new format and legacy format for backward compatibility
+    let message, source, sourceLabel;
+    
+    if (requestBody.data !== undefined && requestBody.source_gear !== undefined) {
+      // New format
+      message = requestBody.data;
+      source = requestBody.source_gear.id || 'unknown';
+      sourceLabel = requestBody.source_gear.label || source;
+      console.log(`Received message from gear "${sourceLabel}" (${source})`);
+    } else {
+      // Legacy format
+      message = requestBody.message;
+      source = requestBody.source || 'direct';
+      sourceLabel = source;
+      console.log(`Received message from legacy source: ${source}`);
+    }
 
     // Try to find the gear
     let gear = await Gear.findById(gearId);
@@ -38,7 +55,7 @@ export async function POST(
       return new Response("Gear not found", { status: 404 });
     }
 
-    const output = await gear.processInput(source, message);
+    const output = await gear.processInput(source, message, sourceLabel);
     
     return Response.json({ output });
   } catch (error) {
@@ -144,6 +161,14 @@ export async function PUT(
       
       // Update the label
       await gear.setLabel(updates.label);
+      updated = true;
+    }
+    
+    if (updates.log !== undefined) {
+      console.log(`PUT API: Updating log for gear ${gearId}`);
+      // Directly update the log array
+      gear.data.log = updates.log;
+      await gear.save();
       updated = true;
     }
     

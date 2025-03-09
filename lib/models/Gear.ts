@@ -12,11 +12,16 @@ export interface ExampleInput {
   lastProcessed?: number;
 }
 
+export interface GearSource {
+  id: string;
+  label: string;
+}
+
 export interface GearLogEntry {
   timestamp: number;
   input: GearInput;
   output?: GearOutput;
-  source?: string;
+  source?: GearSource | string;
 }
 
 export interface GearData {
@@ -357,6 +362,42 @@ export class Gear {
   
   get log() {
     return this.data.log || [];
+  }
+
+  async clearLog() {
+    console.log(`Clearing log for gear ${this.id}`);
+    this.data.log = [];
+    
+    // Make sure the log array is actually empty
+    console.log(`Log array length after clearing: ${this.data.log.length}`);
+    
+    // Save to persistent storage
+    await this.save();
+    
+    // Verify the save worked
+    console.log(`Gear saved after clearing log`);
+    
+    // If we're in the browser, also explicitly update via API
+    if (typeof window !== 'undefined') {
+      try {
+        console.log(`Explicitly updating gear ${this.id} via API to clear logs`);
+        const response = await fetch(`/api/gears/${this.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            log: []
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to clear log via API: ${response.status}`);
+        } else {
+          console.log(`Successfully cleared log via API`);
+        }
+      } catch (err) {
+        console.error("Error clearing log via API:", err);
+      }
+    }
   }
 
   async setLabel(label: string) {
@@ -951,7 +992,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
   }
 
-  async processInput(source: string, input: GearInput): Promise<GearOutput> {
+  async processInput(source: string, input: GearInput, sourceLabel?: string): Promise<GearOutput> {
     if (!this.data.inputs) {
       this.data.inputs = {};
     }
@@ -965,11 +1006,16 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       this.data.log = [];
     }
     
+    // Create source object or string based on available info
+    const sourceObj = sourceLabel 
+      ? { id: source, label: sourceLabel } 
+      : source;
+    
     this.data.log.unshift({
       timestamp: Date.now(),
       input,
       output,
-      source
+      source: sourceObj
     });
     
     // Limit log size to most recent 50 entries
@@ -1034,11 +1080,15 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           this.data.log = [];
         }
         
+        const sourceObj = source === 'direct' 
+          ? { id: 'example', label: 'Example' } 
+          : source;
+          
         this.data.log.unshift({
           timestamp: Date.now(),
           input,
           output,
-          source
+          source: sourceObj
         });
         
         // Limit log size to most recent 50 entries
@@ -1064,7 +1114,10 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         timestamp: Date.now(),
         input: this.data.inputs || {},
         output,
-        source: 'combined'
+        source: {
+          id: 'combined',
+          label: 'Combined Inputs'
+        }
       });
       
       // Limit log size to most recent 50 entries
@@ -1306,10 +1359,17 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       try {
         // Ensure the URL is absolute by checking if it's a relative URL
         let fullUrl = url;
-        if (url.startsWith('/')) {
+        
+        // Remove any "/process" suffix that might be in the URL
+        if (fullUrl.endsWith('/process')) {
+          fullUrl = fullUrl.substring(0, fullUrl.length - 8); // Remove "/process" 
+          console.log(`Removing "/process" suffix from URL: ${url} -> ${fullUrl}`);
+        }
+        
+        if (fullUrl.startsWith('/')) {
           // Convert relative URL to absolute URL using the origin
           const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          fullUrl = `${origin}${url}`;
+          fullUrl = `${origin}${fullUrl}`;
           console.log(`Converting relative URL ${url} to absolute URL ${fullUrl}`);
         }
         
@@ -1317,7 +1377,10 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            source_gear_id: this.id,
+            source_gear: {
+              id: this.id,
+              label: this.label
+            },
             message_id: newMessageId,
             data: output,
           }),

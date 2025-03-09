@@ -34,6 +34,7 @@ interface ChatSidebarProps {
   onProcessExample: (id: string) => Promise<void>;
   onProcessAllExamples: () => Promise<void>;
   onSendOutput?: (id: string, output: any) => Promise<void>;
+  onClearLog?: () => Promise<void>;
   onClose?: () => void;
 }
 
@@ -49,6 +50,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onProcessExample,
   onProcessAllExamples,
   onSendOutput,
+  onClearLog,
   onClose,
 }) => {
   // Format initialMessages for the useChat hook
@@ -196,7 +198,19 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {/* Log Tab */}
       {activeTab === 'log' && (
         <div className="flex-grow overflow-y-auto p-2">
-          <h3 className="text-sm font-medium mb-2">Activity Log</h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="text-sm font-medium">Activity Log</h3>
+            {logEntries.length > 0 && onClearLog && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={onClearLog}
+                className="text-xs h-7 px-2 py-1"
+              >
+                Clear Log
+              </Button>
+            )}
+          </div>
           {logEntries.length === 0 ? (
             <div className="text-gray-500 text-xs p-2 text-center">
               No activity logged yet
@@ -209,7 +223,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   className={`border-b last:border-b-0 p-3 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
                 >
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <div>{entry.source || 'direct'}</div>
+                    <div>{formatSource(entry.source)}</div>
                     <div>{formatTimestamp(entry.timestamp)}</div>
                   </div>
                   
@@ -265,4 +279,24 @@ const formatContent = (content: string | Record<string, unknown>): string => {
     return content;
   }
   return JSON.stringify(content, null, 2);
+};
+
+// Format source to display the label
+const formatSource = (source: any): string => {
+  if (!source) return 'direct';
+  
+  if (typeof source === 'string') {
+    return source;
+  }
+  
+  if (typeof source === 'object' && source !== null) {
+    if (source.label) {
+      return source.label;
+    }
+    if (source.id) {
+      return source.id;
+    }
+  }
+  
+  return 'unknown';
 };
