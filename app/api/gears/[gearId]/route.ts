@@ -82,6 +82,7 @@ export async function GET(
       updatedAt: gear.updatedAt,
       exampleInputs: gear.exampleInputs,
       label: gear.label,
+      log: gear.log,
     });
   } catch (error) {
     console.error("Error getting gear:", error);

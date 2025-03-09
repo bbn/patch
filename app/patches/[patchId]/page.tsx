@@ -27,7 +27,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
-import { Gear } from "@/lib/models/Gear";
+import { Gear, GearLogEntry } from "@/lib/models/Gear";
 
 // Custom node component for gears
 const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnectable: boolean }) => {
@@ -63,6 +63,7 @@ export default function PatchPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
+  const [logEntries, setLogEntries] = useState<GearLogEntry[]>([]);
   // Define a type for our node data
   type NodeData = {
     gearId: string;
@@ -451,6 +452,7 @@ export default function PatchPage() {
         console.log(`Gear ${gearId} found locally`);
         setGearMessages(gear.messages);
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
         
         // If we also have server data, make sure they're in sync
         if (serverGear) {
@@ -461,6 +463,11 @@ export default function PatchPage() {
             await gear.save();
             setGearMessages(gear.messages);
           }
+          
+          // Get log entries from server if available
+          if (serverGear.log) {
+            setLogEntries(serverGear.log);
+          }
         }
       } else if (serverGear) {
         // No local gear but we have server data
@@ -469,11 +476,13 @@ export default function PatchPage() {
           id: gearId as string,
           messages: serverGear.messages || [],
           exampleInputs: serverGear.exampleInputs || [],
-          outputUrls: serverGear.outputUrls || []
+          outputUrls: serverGear.outputUrls || [],
+          log: serverGear.log || []
         });
         
         setGearMessages(gear.messages);
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       } else {
         // No gear found anywhere
         console.log(`No gear ${gearId} found anywhere, creating new`);
@@ -489,11 +498,13 @@ export default function PatchPage() {
         
         setGearMessages(gear.messages);
         setExampleInputs([]);
+        setLogEntries([]);
       }
     } catch (error) {
       console.error(`Error loading gear ${gearId}:`, error);
       setGearMessages([]);
       setExampleInputs([]);
+      setLogEntries([]);
     }
   }, []);
   
@@ -591,6 +602,7 @@ export default function PatchPage() {
         // After adding a message, the gear will automatically process all examples,
         // so we need to update our local state with the updated examples
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
         
         // If the message was from the assistant, a label may have been generated
         // Update the node's label from the gear
@@ -723,6 +735,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error adding example input:", error);
@@ -800,6 +813,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error updating example input:", error);
@@ -888,6 +902,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error processing example input:", error);
@@ -955,6 +970,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error processing all example inputs:", error);
@@ -1421,6 +1437,7 @@ export default function PatchPage() {
               initialMessages={gearMessages}
               onMessageSent={handleMessageSent}
               exampleInputs={exampleInputs}
+              logEntries={logEntries}
               onAddExample={handleAddExample}
               onUpdateExample={handleUpdateExample}
               onDeleteExample={handleDeleteExample}
