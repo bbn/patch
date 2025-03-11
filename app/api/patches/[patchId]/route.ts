@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { Patch } from "@/lib/models/Patch";
+import { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ patchId: string }> }
 ) {
   try {
@@ -14,6 +15,14 @@ export async function GET(
     
     if (!patch) {
       return new Response("Patch not found", { status: 404 });
+    }
+    
+    // Check for regenerate_description query parameter
+    const regenerateDescription = req.nextUrl.searchParams.get('regenerate_description') === 'true';
+    if (regenerateDescription) {
+      console.log(`Manually regenerating description for patch ${patchId}`);
+      await patch.generateDescription();
+      await patch.save();
     }
     
     return Response.json({
@@ -69,6 +78,10 @@ export async function PUT(
           nodes: body.nodes,
           edges: body.edges || []
         });
+      } else if (body.regenerate_description === true) {
+        // Handle explicit request to regenerate description
+        console.log(`Regenerating description for patch ${patchId} via PUT request`);
+        await patch.generateDescription();
       }
       
       // Save the patch if any fields were updated
@@ -78,6 +91,7 @@ export async function PUT(
     return Response.json({
       id: patch.id,
       name: patch.name,
+      description: patch.description,
       success: true
     });
   } catch (error) {

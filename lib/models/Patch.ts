@@ -49,6 +49,12 @@ export class Patch {
 
   static async create(data: Partial<PatchData> & { id: string; name: string }): Promise<Patch> {
     const patch = new Patch(data);
+    
+    // If there are nodes in the patch, generate a description
+    if (data.nodes && data.nodes.length > 0) {
+      await patch.generateDescription();
+    }
+    
     await patch.save();
     return patch;
   }
@@ -266,6 +272,39 @@ export class Patch {
     }
   }
   
+  /**
+   * Generate descriptions for all patches in the system
+   * This is useful when introducing the description feature to ensure all patches have descriptions.
+   */
+  static async generateAllDescriptions(): Promise<number> {
+    console.log("Generating descriptions for all patches...");
+    
+    // Load all patches
+    const patches = await Patch.findAll();
+    console.log(`Found ${patches.length} patches to process`);
+    
+    let successCount = 0;
+    
+    // Process each patch
+    for (const patch of patches) {
+      if (patch.nodes.length > 0) {
+        try {
+          console.log(`Generating description for patch ${patch.id}: ${patch.name}`);
+          await patch.generateDescription();
+          await patch.save();
+          successCount++;
+        } catch (error) {
+          console.error(`Error generating description for patch ${patch.id}:`, error);
+        }
+      } else {
+        console.log(`Skipping patch ${patch.id} with no nodes`);
+      }
+    }
+    
+    console.log(`Successfully updated descriptions for ${successCount} patches`);
+    return successCount;
+  }
+  
   // Get all patches from the store
   static async findAll(): Promise<Patch[]> {
     if (typeof window !== 'undefined') {
@@ -445,6 +484,10 @@ export class Patch {
   // Node management
   async addNode(node: PatchNode): Promise<void> {
     this.data.nodes.push(node);
+    
+    // Generate a new description when node is added, as functionality might change
+    await this.generateDescription();
+    
     await this.save();
   }
 
@@ -452,10 +495,19 @@ export class Patch {
     const nodeIndex = this.data.nodes.findIndex(node => node.id === id);
     if (nodeIndex === -1) return false;
     
+    // Check if the gearId is changing - this would change functionality
+    const isChangingGear = updates.data?.gearId && 
+      updates.data.gearId !== this.data.nodes[nodeIndex].data.gearId;
+    
     this.data.nodes[nodeIndex] = {
       ...this.data.nodes[nodeIndex],
       ...updates,
     };
+    
+    // If changing the gear, update the description
+    if (isChangingGear) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return true;
@@ -469,6 +521,11 @@ export class Patch {
     this.data.edges = this.data.edges.filter(
       edge => edge.source !== id && edge.target !== id
     );
+    
+    // Generate a new description when nodes are removed, as functionality might change
+    if (this.data.nodes.length < initialLength) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return this.data.nodes.length < initialLength;
@@ -499,6 +556,9 @@ export class Patch {
       console.error("Error updating gear connections:", error);
     }
     
+    // Generate a new description when an edge is added, as connections change the functionality
+    await this.generateDescription();
+    
     await this.save();
   }
 
@@ -511,7 +571,11 @@ export class Patch {
     const newSourceId = updates.source || oldEdge.source;
     const newTargetId = updates.target || oldEdge.target;
     
+    // Track if connections changed to know if we need a new description
+    let connectionsChanged = false;
+    
     if (oldEdge.source !== newSourceId || oldEdge.target !== newTargetId) {
+      connectionsChanged = true;
       try {
         // Remove old connection
         const oldSourceNode = this.data.nodes.find(node => node.id === oldEdge.source);
@@ -550,6 +614,11 @@ export class Patch {
       ...updates,
     };
     
+    // Update description if connections changed
+    if (connectionsChanged) {
+      await this.generateDescription();
+    }
+    
     await this.save();
     return true;
   }
@@ -576,6 +645,11 @@ export class Patch {
     
     const initialLength = this.data.edges.length;
     this.data.edges = this.data.edges.filter(edge => edge.id !== id);
+    
+    // Generate a new description when an edge is removed, as it changes the functionality
+    if (this.data.edges.length < initialLength) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return this.data.edges.length < initialLength;
@@ -639,6 +713,171 @@ export class Patch {
     }
     
     this.data.edges = reactFlowData.edges;
+    
+    // Generate a description since the patch's functionality has changed
+    await this.generateDescription();
+    
     await this.save();
+  }
+  
+  /**
+   * Generates a description for the patch based on its contents.
+   * When a patch's functionality changes, this will update the description.
+   * 
+   * Use static method Patch.generateAllDescriptions() to update descriptions for all patches.
+   */
+  async generateDescription(): Promise<string> {
+    try {
+      console.log(`Generating description for patch ${this.id}`);
+      
+      // Get the Gears in this patch to understand the patch's functionality
+      const gearPromises = this.data.nodes.map(node => Gear.findById(node.data.gearId));
+      const gears = await Promise.all(gearPromises);
+      
+      // Collect information about each gear's functionality (from its messages and label)
+      const gearInfo = gears
+        .filter(gear => gear !== null)
+        .map(gear => {
+          const messages = gear?.messages || [];
+          // Get system and first user message for context on what the gear does
+          const systemMessage = messages.find(m => m.role === "system")?.content || "";
+          const userMessage = messages.find(m => m.role === "user")?.content || "";
+          
+          return {
+            id: gear?.id || "",
+            label: gear?.label || "",
+            systemPrompt: systemMessage.substring(0, 200), // First 200 chars of system prompt
+            userPrompt: userMessage.substring(0, 200),     // First 200 chars of user prompt
+          };
+        });
+      
+      // Collect information about the connections between gears
+      const connectionInfo = this.data.edges.map(edge => {
+        const sourceNode = this.data.nodes.find(node => node.id === edge.source);
+        const targetNode = this.data.nodes.find(node => node.id === edge.target);
+        return {
+          source: sourceNode?.data.label || sourceNode?.data.gearId || "",
+          target: targetNode?.data.label || targetNode?.data.gearId || "",
+        };
+      });
+      
+      // If there's no substantive information to generate a description from, return early
+      if (gearInfo.length === 0) {
+        return this.description; // Keep existing description
+      }
+      
+      // Compose a prompt for the LLM
+      const prompt = `Generate a short, concise description (maximum 120 characters) of what this patch does.
+The description should fit on a card and explain the functionality and purpose of the patch.
+
+This patch contains ${gearInfo.length} gears with the following labels and purposes:
+${gearInfo.map(g => `- ${g.label}: ${g.systemPrompt.substring(0, 100)}`).join('\n')}
+
+The gears are connected with these data flows:
+${connectionInfo.map(c => `- ${c.source} → ${c.target}`).join('\n')}
+
+Generate ONLY the description text, nothing else. Keep it under 120 characters and make it informative yet concise.`;
+
+      // Process with LLM using the /label endpoint of the first gear
+      // (We're reusing this endpoint as it already handles LLM communication)
+      if (typeof window !== 'undefined') {
+        try {
+          const firstGearId = gears[0]?.id;
+          if (!firstGearId) {
+            console.warn("No gear found for description generation");
+            return this.description;
+          }
+          
+          // Use the label endpoint to get a concise description
+          const response = await fetch(`/api/gears/${firstGearId}/label`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt }),
+          });
+          
+          if (!response.ok) {
+            console.error(`Error generating description: ${response.status}`);
+            return this.description;
+          }
+          
+          // Handle streaming response or regular JSON
+          if (response.headers.get("content-type")?.includes("text/event-stream")) {
+            let description = "";
+            const reader = response.body?.getReader();
+            if (!reader) return this.description;
+            
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value);
+              const lines = chunk.split("\n");
+              
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6).trim();
+                  if (data === "[DONE]") break;
+                  
+                  try {
+                    if (!data) continue;
+                    const parsed = JSON.parse(data);
+                    if (parsed.type === "text" && parsed.value) {
+                      description += parsed.value;
+                    }
+                  } catch (e) {
+                    if (data && !data.includes('{') && !data.includes('[')) {
+                      description += data;
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Clean up the description and limit its length
+            const cleanedDescription = description
+              .replace(/[\r\n"]+/g, '') // Remove newlines and quotes
+              .trim()
+              .substring(0, 120); // Enforce character limit
+            
+            console.log(`Generated description: "${cleanedDescription}"`);
+            this.data.description = cleanedDescription;
+            return cleanedDescription;
+          } else {
+            // Regular JSON response
+            const text = await response.text();
+            try {
+              const result = JSON.parse(text);
+              const description = (result.content || result.text || text)
+                .replace(/[\r\n"]+/g, '')
+                .trim()
+                .substring(0, 120);
+              
+              console.log(`Generated description: "${description}"`);
+              this.data.description = description;
+              return description;
+            } catch (e) {
+              // Clean up the text directly
+              const description = text
+                .replace(/[\r\n"]+/g, '')
+                .trim()
+                .substring(0, 120);
+              
+              console.log(`Generated description from raw text: "${description}"`);
+              this.data.description = description;
+              return description;
+            }
+          }
+        } catch (error) {
+          console.error("Error in description generation:", error);
+          return this.description;
+        }
+      }
+      
+      return this.description; // Return existing description if server-side
+    } catch (error) {
+      console.error("Error generating patch description:", error);
+      return this.description;
+    }
   }
 }
