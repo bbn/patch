@@ -105,6 +105,7 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     
     setIsProcessing(prev => ({ ...prev, [id]: true }));
     try {
+      // Process the example but don't forward to connected gears
       await onProcessExample(id);
     } catch (error) {
       console.error(`Error processing example ${id}:`, error);

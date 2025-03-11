@@ -236,6 +236,10 @@ export class Gear {
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     
+    // Debug logs for saving
+    console.log(`GEAR-SAVE - Saving gear ${this.data.id}`);
+    console.log(`GEAR-SAVE - Log entries: ${this.data.log?.length || 0}`);
+    
     // Debug log when saving with a label
     if (this.data.label) {
       console.log(`LABEL DEBUG: save() called with label = "${this.data.label}"`);
@@ -322,8 +326,23 @@ export class Gear {
       }
     } else {
       // Server-side: Use KV directly
-      await saveToKV(`gear:${this.data.id}`, this.data);
-      console.log(`Saved gear to KV: ${this.data.id}`);
+      try {
+        console.log(`GEAR-SAVE - Server side: Saving gear ${this.data.id} to KV`);
+        console.log(`GEAR-SAVE - Log entries before save: ${this.data.log?.length || 0}`);
+        
+        await saveToKV(`gear:${this.data.id}`, this.data);
+        console.log(`GEAR-SAVE - Successfully saved gear ${this.data.id} to KV`);
+        
+        // Verify the save worked
+        const verifiedData = await getFromKV<GearData>(`gear:${this.data.id}`);
+        if (verifiedData) {
+          console.log(`GEAR-SAVE - Verified saved gear has ${verifiedData.log?.length || 0} log entries`);
+        } else {
+          console.error(`GEAR-SAVE - ERROR: Failed to verify saved gear data!`);
+        }
+      } catch (kvError) {
+        console.error(`GEAR-SAVE - Error saving to KV:`, kvError);
+      }
     }
   }
 
@@ -576,15 +595,46 @@ export class Gear {
     }
     
     try {
-      // Get output directly from LLM without going through the process method
-      // to avoid forwarding to output gears when processing examples
-      const output = await this.processWithLLM(example.input);
-      
-      // Update the example with the new output
-      example.output = output;
-      example.lastProcessed = Date.now();
-      
-      await this.save();
+      // For examples, directly process with the API using no_forward=true and no_log=true
+      // to prevent both forwarding outputs and creating log entries when processing examples
+      if (typeof window !== 'undefined') {
+        // In browser, use the API with no_forward and no_log
+        try {
+          const response = await fetch(`/api/gears/${this.data.id}?no_forward=true&no_log=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source: 'example',
+              message: example.input
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to process example: ${await response.text()}`);
+          }
+          
+          const result = await response.json();
+          
+          // Update the example with the new output
+          example.output = result.output;
+          example.lastProcessed = Date.now();
+          
+          // Save the updated example
+          await this.save();
+        } catch (error) {
+          console.error(`Error processing example with API: ${error}`);
+          throw error;
+        }
+      } else {
+        // Server-side: just use the LLM directly
+        const output = await this.processWithLLM(example.input);
+        
+        // Update the example with the new output
+        example.output = output;
+        example.lastProcessed = Date.now();
+        
+        await this.save();
+      }
       
       // Sync with server
       if (typeof window !== 'undefined') {
@@ -621,39 +671,12 @@ export class Gear {
     
     for (const example of this.data.exampleInputs) {
       try {
-        // Get output directly from LLM without going through the process method
-        // to avoid forwarding to output gears when processing examples
-        const output = await this.processWithLLM(example.input);
-        
-        // Update the example with the new output
-        example.output = output;
-        example.lastProcessed = Date.now();
-        
+        // Process each example individually with no_forward=true
+        await this.processExampleInput(example.id);
         results.push(example);
       } catch (error) {
         console.error(`Error processing example input ${example.id}:`, error);
         // Continue processing other examples even if one fails
-      }
-    }
-    
-    await this.save();
-    
-    // Sync with server
-    if (typeof window !== 'undefined') {
-      try {
-        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            exampleInputs: this.data.exampleInputs
-          }),
-        });
-        
-        if (!updateResponse.ok) {
-          console.warn("Failed to update processed examples on server:", await updateResponse.text());
-        }
-      } catch (err) {
-        console.warn("Error updating processed examples on server:", err);
       }
     }
     
@@ -992,39 +1015,29 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
   }
 
-  async processInput(source: string, input: GearInput, sourceLabel?: string): Promise<GearOutput> {
+  async processWithoutLogging(source: string, input: GearInput): Promise<GearOutput> {
+    // Store the input in inputs dictionary
     if (!this.data.inputs) {
       this.data.inputs = {};
     }
     this.data.inputs[source] = input;
     this.data.updatedAt = Date.now();
     await this.save();
-    const output = await this.process();
     
-    // Add to log
-    if (!this.data.log) {
-      this.data.log = [];
-    }
+    // Process the input using LLM
+    const output = await this.processWithLLM(input);
     
-    // Create source object or string based on available info
-    const sourceObj = sourceLabel 
-      ? { id: source, label: sourceLabel } 
-      : source;
-    
-    this.data.log.unshift({
-      timestamp: Date.now(),
-      input,
-      output,
-      source: sourceObj
-    });
-    
-    // Limit log size to most recent 50 entries
-    if (this.data.log.length > 50) {
-      this.data.log = this.data.log.slice(0, 50);
-    }
-    
+    // Store the output
+    this.data.output = output;
     await this.save();
+    
     return output;
+  }
+  
+  // Keep for backward compatibility but modify to use processWithoutLogging
+  async processInput(source: string, input: GearInput, sourceLabel?: string): Promise<GearOutput> {
+    console.log("WARNING: processInput is deprecated, use processWithoutLogging instead");
+    return this.processWithoutLogging(source, input);
   }
 
   async addOutputUrl(url: string) {
@@ -1065,7 +1078,6 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
   async process(input?: GearInput) {
     try {
-      const source = 'direct';
       let output;
       
       if (input !== undefined) {
@@ -1074,59 +1086,13 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         output = await this.processWithLLM(input);
         this.data.output = output;
         await this.save();
-        
-        // Log the processing
-        if (!this.data.log) {
-          this.data.log = [];
-        }
-        
-        const sourceObj = source === 'direct' 
-          ? { id: 'example', label: 'Example' } 
-          : source;
-          
-        this.data.log.unshift({
-          timestamp: Date.now(),
-          input,
-          output,
-          source: sourceObj
-        });
-        
-        // Limit log size to most recent 50 entries
-        if (this.data.log.length > 50) {
-          this.data.log = this.data.log.slice(0, 50);
-        }
-        
-        await this.save();
-        await this.forwardOutputToGears(output);
         return output;
       }
       
       // Process all inputs from the inputs dictionary
       output = await this.processWithLLM();
       this.data.output = output;
-      
-      // Log processing of all inputs
-      if (!this.data.log) {
-        this.data.log = [];
-      }
-      
-      this.data.log.unshift({
-        timestamp: Date.now(),
-        input: this.data.inputs || {},
-        output,
-        source: {
-          id: 'combined',
-          label: 'Combined Inputs'
-        }
-      });
-      
-      // Limit log size to most recent 50 entries
-      if (this.data.log.length > 50) {
-        this.data.log = this.data.log.slice(0, 50);
-      }
-      
       await this.save();
-      await this.forwardOutputToGears(output);
       return output;
     } catch (error) {
       console.error(`Error processing: ${error}`);
@@ -1346,50 +1312,86 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
   }
 
-  private async forwardOutputToGears(output: GearOutput): Promise<void> {
+  async forwardOutputToGears(output: GearOutput): Promise<void> {
     // If there are no output gears, just return early
     if (!this.outputUrls || this.outputUrls.length === 0) {
       return;
     }
-    console.log(
-      `Forwarding output from ${this.id} to output gears ${this.outputUrls}: ${output}`,
-    );
+    
+    // Log all output URLs for debugging
+    console.log(`FORWARDING - Gear ${this.id} forwarding to ${this.outputUrls.length} gears`);
+    console.log(`FORWARDING - Gear ${this.id} outputUrls:`, JSON.stringify(this.outputUrls));
+    
     for (const url of this.outputUrls) {
       const newMessageId = crypto.randomUUID();
       try {
         // Ensure the URL is absolute by checking if it's a relative URL
         let fullUrl = url;
         
-        // Remove any "/process" suffix that might be in the URL
+        // REMOVE any /process suffix if it exists
         if (fullUrl.endsWith('/process')) {
           fullUrl = fullUrl.substring(0, fullUrl.length - 8); // Remove "/process" 
-          console.log(`Removing "/process" suffix from URL: ${url} -> ${fullUrl}`);
+          console.log(`FORWARDING - Removing "/process" suffix: ${url} -> ${fullUrl}`);
         }
         
+        // Make sure logs are created in receiving gears by not passing no_log=true
+        // If URL already has query params with no_log=true, remove that parameter
+        if (fullUrl.includes('no_log=true')) {
+          // Replace no_log=true with no_log=false
+          fullUrl = fullUrl.replace('no_log=true', 'no_log=false');
+          console.log(`FORWARDING - Fixed URL to enable logs: ${fullUrl}`);
+        }
+        
+        console.log(`FORWARDING - Gear ${this.id} forwarding to URL: ${fullUrl}`);
+        
+        // Edge Runtime requires absolute URLs for fetch
         if (fullUrl.startsWith('/')) {
-          // Convert relative URL to absolute URL using the origin
-          const origin = typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          fullUrl = `${origin}${fullUrl}`;
-          console.log(`Converting relative URL ${url} to absolute URL ${fullUrl}`);
+          // For browser context, use window.location
+          if (typeof window !== 'undefined') {
+            fullUrl = `${window.location.origin}${fullUrl}`;
+            console.log(`FORWARDING - Client-side URL: ${fullUrl}`);
+          } else {
+            // In server context (edge runtime) we must use absolute URLs
+            // Try to get from env vars first, fallback to localhost for development
+            const baseURL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333';
+            fullUrl = `${baseURL}${fullUrl}`;
+            console.log(`FORWARDING - Server-side absolute URL: ${fullUrl}`);
+          }
         }
         
-        const response = await fetch(fullUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_gear: {
-              id: this.id,
-              label: this.label
-            },
-            message_id: newMessageId,
-            data: output,
-          }),
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        try {
+          console.log(`FORWARDING - Sending request to ${fullUrl}`);
+          
+          // Each gear is the source for its own forwarded messages
+          const response = await fetch(fullUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_gear: {
+                id: this.id,
+                label: this.label
+              },
+              message_id: newMessageId,
+              data: output,
+            }),
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`FORWARDING - Error response from ${fullUrl}: ${response.status} ${errorText}`);
+            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+          } else {
+            console.log(`FORWARDING - Successfully forwarded from ${this.id} to ${fullUrl}`);
+          }
+        } catch (fetchError) {
+          // Log the detailed error for debugging
+          console.error(`FORWARDING - Fetch error for ${fullUrl}:`, fetchError);
+          
+          // Fall back to log the error and continue with other URLs
+          console.log(`FORWARDING - Will continue with other URLs despite error`);
         }
       } catch (error) {
-        console.error(`Error forwarding to ${url}: ${error}`);
+        console.error(`FORWARDING - Error forwarding from ${this.id} to ${url}:`, error);
       }
     }
   }

@@ -1033,12 +1033,30 @@ export default function PatchPage() {
         })
       );
       
+      // Get the gear to access its outputUrls
       const gear = await Gear.findById(gearId);
       if (gear) {
-        // Forward this specific output to connected gears
-        await gear.forwardOutputToGears(output);
+        // Call the API directly without the no_forward parameter
+        // This allows forwarding to connected gears
+        console.log(`Processing and forwarding example output from ${gear.label} (${gear.id})`);
         
-        console.log(`Sent output from example ${exampleId} to connected gears`);
+        // For the "Send Output" button case:
+        // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
+        // So we use no_log=true for this gear, but the receiving gears should create logs
+        await fetch(`/api/gears/${gear.id}?no_log=true`, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: output,
+            source: 'example'
+          })
+        });
+        
+        console.log(`DEBUG - Send Output: Called API on server for gear ${gear.id} with example output`);
+        
+        console.log(`Sent output from example ${exampleId} to ${gear.outputUrls.length} connected gears`);
+      } else {
+        console.error(`Could not find gear ${gearId}`);
       }
     } catch (error) {
       console.error("Error sending example output:", error);

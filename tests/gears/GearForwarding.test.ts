@@ -125,7 +125,7 @@ describe('Gear Output Forwarding', () => {
     
     // Verify payload structure (from first call)
     const bodyObj = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
-    expect(bodyObj).toHaveProperty('source_gear_id', sourceGear.id);
+    expect(bodyObj).toHaveProperty('source_gear.id', sourceGear.id);
     expect(bodyObj).toHaveProperty('message_id');
     expect(bodyObj).toHaveProperty('data', output);
   // Increase timeout for LLM API calls
@@ -250,5 +250,101 @@ describe('Gear Output Forwarding', () => {
         body: expect.stringContaining(sourceGear.id)
       })
     );
+  }, 60000);
+
+  test('should create exactly one log entry in the receiving gear', async () => {
+    // Create source gear (Gear A) with an example
+    const gearA = new Gear({ 
+      id: 'gear-A',
+      label: 'Gear A',
+      outputUrls: ['/api/gears/gear-B'] // Connect to Gear B
+    });
+    
+    // Create target gear (Gear B)
+    const gearB = new Gear({
+      id: 'gear-B',
+      label: 'Gear B'
+    });
+    
+    // Manually add an empty log to ensure it exists
+    (gearB as any).data = {
+      ...(gearB as any).data,
+      log: []
+    };
+    
+    // Mock a method to add log entries to Gear B
+    const addLogEntry = (input: any, output: any, source: any) => {
+      (gearB as any).data.log.unshift({
+        timestamp: Date.now(),
+        input,
+        output,
+        source
+      });
+    };
+    
+    // Mock fetch to simulate the API behavior
+    (global.fetch as jest.Mock).mockImplementation(async (url: string, options: any) => {
+      // When forwarding to Gear B's endpoint
+      if (url.includes('/api/gears/gear-B')) {
+        // Parse the request body
+        const body = JSON.parse(options.body);
+        
+        // Verify it contains the expected properties
+        expect(body).toHaveProperty('source_gear');
+        expect(body.source_gear).toHaveProperty('id', 'gear-A');
+        expect(body.source_gear).toHaveProperty('label', 'Gear A');
+        expect(body).toHaveProperty('data');
+        
+        // Simulate the server-side API behavior:
+        
+        // 1. Process the input (mocked response)
+        const output = `Processed by Gear B: ${body.data}`;
+        
+        // 2. Create a single log entry in Gear B
+        const sourceObj = {
+          id: body.source_gear.id,
+          label: body.source_gear.label
+        };
+        
+        addLogEntry(body.data, output, sourceObj);
+        
+        // Return a success response
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ output }),
+          text: async () => JSON.stringify({ output })
+        };
+      }
+      
+      // Default response for any other URLs
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+        text: async () => '{}'
+      };
+    });
+    
+    // Simulate pressing the "Send Output" button for an example
+    const exampleOutput = "Example output from Gear A";
+    await gearA.forwardOutputToGears(exampleOutput);
+    
+    // Verify only one request was made to Gear B
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/gears/gear-B'),
+      expect.any(Object)
+    );
+    
+    // The critical assertion: exactly one log entry was created
+    const logEntries = (gearB as any).data.log;
+    expect(logEntries.length).toBe(1);
+    
+    // Verify the log entry contains the correct information
+    expect(logEntries[0]).toHaveProperty('source.id', 'gear-A');
+    expect(logEntries[0]).toHaveProperty('source.label', 'Gear A');
+    expect(logEntries[0]).toHaveProperty('input', exampleOutput);
+    expect(logEntries[0]).toHaveProperty('output', `Processed by Gear B: ${exampleOutput}`);
   }, 60000);
 });

@@ -24,27 +24,44 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ gearId: string }> }
 ) {
+  // In the latest Next.js, background tasks need to run after returning response
+  // We'll handle this differently
   try {
     const resolvedParams = await params;
     console.log("Gear API called with gearId:", resolvedParams.gearId);
+    
+    // Check query parameters
+    const url = new URL(req.url);
+    const noForward = url.searchParams.get('no_forward') === 'true';
+    
+    // Default behavior should create logs unless explicitly disabled
+    // Only if 'no_log' is exactly 'true' should logs be disabled
+    const noLog = url.searchParams.get('no_log') === 'true';
+    
     const requestBody = await req.json();
     const gearId = resolvedParams.gearId;
 
     // Handle both the new format and legacy format for backward compatibility
     let message, source, sourceLabel;
     
+    // Debug log the incoming request for troubleshooting
+    console.log(`GEAR-LOG - [${gearId}] Incoming request`);
+    console.log(`GEAR-LOG - [${gearId}] Request body:`, JSON.stringify(requestBody, null, 2));
+    console.log(`GEAR-LOG - [${gearId}] Query params: no_forward=${noForward}, no_log=${noLog}`);
+    console.log(`GEAR-LOG - [${gearId}] URL:`, req.url);
+    
     if (requestBody.data !== undefined && requestBody.source_gear !== undefined) {
-      // New format
+      // New format - receiving a forwarded message from another gear
       message = requestBody.data;
       source = requestBody.source_gear.id || 'unknown';
       sourceLabel = requestBody.source_gear.label || source;
-      console.log(`Received message from gear "${sourceLabel}" (${source})`);
+      console.log(`GEAR-LOG - [${gearId}] Received message from gear "${sourceLabel}" (${source})")`);
     } else {
-      // Legacy format
+      // Legacy format - direct input not being forwarded
       message = requestBody.message;
       source = requestBody.source || 'direct';
       sourceLabel = source;
-      console.log(`Received message from legacy source: ${source}`);
+      console.log(`GEAR-LOG - [${gearId}] Received message from legacy source: ${source}`);
     }
 
     // Try to find the gear
@@ -55,9 +72,101 @@ export async function POST(
       return new Response("Gear not found", { status: 404 });
     }
 
-    const output = await gear.processInput(source, message, sourceLabel);
+    // Process the input
+    const output = await gear.processWithLLM(message);
     
-    return Response.json({ output });
+    // Store the output
+    gear.data.output = output;
+    
+    // Create a log entry unless explicitly disabled
+    if (!noLog) {
+      if (!gear.data.log) {
+        gear.data.log = [];
+        console.log(`GEAR-LOG - [${gearId}] Initialized empty log array`);
+      }
+      
+      // Create source object
+      const sourceObj = sourceLabel 
+        ? { id: source, label: sourceLabel } 
+        : source;
+      
+      console.log(`GEAR-LOG - [${gearId}] Creating log entry from source ${JSON.stringify(sourceObj)}`);
+      
+      try {
+        // Add a single log entry
+        gear.data.log.unshift({
+          timestamp: Date.now(),
+          input: message,
+          output,
+          source: sourceObj
+        });
+        
+        // Limit log size to most recent 50 entries
+        if (gear.data.log.length > 50) {
+          gear.data.log = gear.data.log.slice(0, 50);
+        }
+        
+        console.log(`GEAR-LOG - [${gearId}] Created log entry (log count: ${gear.data.log.length})`);
+        
+        // Before saving, validate the log was actually added
+        if (gear.data.log.length === 0) {
+          console.error(`GEAR-LOG - [${gearId}] ERROR: Log array is still empty after adding entry!`);
+        } else {
+          console.log(`GEAR-LOG - [${gearId}] Latest log entry timestamp: ${gear.data.log[0].timestamp}`);
+        }
+      } catch (logError) {
+        console.error(`GEAR-LOG - [${gearId}] Error creating log entry:`, logError);
+      }
+    } else {
+      console.log(`GEAR-LOG - [${gearId}] Skipping log creation (no_log=true)`);
+    }
+    
+    // Save the gear with the updated output (and possibly log entry)
+    console.log(`GEAR-LOG - [${gearId}] Saving gear with log count: ${gear.data.log?.length || 0}`);
+    try {
+      await gear.save();
+      console.log(`GEAR-LOG - [${gearId}] Successfully saved gear`);
+      
+      // Verify the save worked by refetching the gear
+      const verifyGear = await Gear.findById(gearId);
+      if (verifyGear) {
+        console.log(`GEAR-LOG - [${gearId}] Verified saved gear has ${verifyGear.log.length} log entries`);
+      } else {
+        console.error(`GEAR-LOG - [${gearId}] ERROR: Could not verify gear was saved!`);
+      }
+    } catch (saveError) {
+      console.error(`GEAR-LOG - [${gearId}] Error saving gear:`, saveError);
+    }
+    
+    // Prepare response
+    const response = Response.json({ output });
+    
+    // Only forward output if not explicitly disabled via query parameter
+    if (!noForward && gear.outputUrls?.length > 0) {
+      console.log(`GEAR-LOG - [${gearId}] Forwarding output to ${gear.outputUrls.length} connected gears`);
+      
+        // In Edge Runtime, we need to just start the processing without waiting
+      // We'll fire and forget, letting the runtime handle background work
+      // This is not ideal but needed as a workaround for current Next.js Edge API
+      (async () => {
+        try {
+          console.log(`GEAR-LOG - [${gearId}] Starting async forwarding...`);
+          await gear.forwardOutputToGears(output);
+          console.log(`GEAR-LOG - [${gearId}] Successfully completed async forwarding`);
+        } catch (forwardError) {
+          console.error(`GEAR-LOG - [${gearId}] Error in async forwarding:`, forwardError);
+        }
+      })();
+      
+      console.log(`GEAR-LOG - [${gearId}] Forwarding started asynchronously`);
+    } else if (noForward) {
+      console.log(`GEAR-LOG - [${gearId}] Not forwarding (no_forward=true)`);
+    } else {
+      console.log(`GEAR-LOG - [${gearId}] No output URLs to forward to`);
+    }
+    
+    // Return the prepared response
+    return response;
   } catch (error) {
     console.error("Error processing gear input:", error);
     return Response.json(

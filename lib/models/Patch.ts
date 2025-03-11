@@ -387,8 +387,13 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
+          // Use a standardized URL format for consistency
           const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-          await sourceGear.addOutputUrl(targetGearUrl);
+          
+          // Check if this connection already exists to avoid duplicates
+          if (!sourceGear.outputUrls.includes(targetGearUrl)) {
+            await sourceGear.addOutputUrl(targetGearUrl);
+          }
         }
       }
     } catch (error) {
@@ -429,7 +434,11 @@ export class Patch {
           const newSourceGear = await Gear.findById(newSourceNode.data.gearId);
           if (newSourceGear) {
             const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}`;
-            await newSourceGear.addOutputUrl(newTargetUrl);
+            
+            // Check if this connection already exists to avoid duplicates
+            if (!newSourceGear.outputUrls.includes(newTargetUrl)) {
+              await newSourceGear.addOutputUrl(newTargetUrl);
+            }
           }
         }
       } catch (error) {
