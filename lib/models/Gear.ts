@@ -1,6 +1,7 @@
 import { saveToKV, getFromKV, deleteFromKV, listKeysFromKV } from '../kv';
 import { GearChat } from "./GearChat";
 import { Message, Role, GearInput, GearOutput } from "./types";
+import { debugLog, isDebugLoggingEnabled } from "../utils";
 
 // No in-memory store - using Vercel KV exclusively for serverless architecture
 
@@ -236,13 +237,15 @@ export class Gear {
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     
-    // Debug logs for saving
-    console.log(`GEAR-SAVE - Saving gear ${this.data.id}`);
-    console.log(`GEAR-SAVE - Log entries: ${this.data.log?.length || 0}`);
+    // Keep only critical logs for production, use debug logging for verbose output
+    console.log(`Saving gear ${this.data.id}`);
     
-    // Debug log when saving with a label
+    // Use conditional debug logging for verbose output
+    debugLog("GEAR-SAVE", `Saving gear ${this.data.id} with ${this.data.log?.length || 0} log entries`);
+    
+    // Debug log when saving with a label (only in debug mode)
     if (this.data.label) {
-      console.log(`LABEL DEBUG: save() called with label = "${this.data.label}"`);
+      debugLog("LABEL", `save() called with label = "${this.data.label}"`);
     }
     
     if (typeof window !== 'undefined') {
@@ -253,7 +256,7 @@ export class Gear {
         
         if (checkResponse.ok) {
           // Update existing gear
-          console.log(`LABEL DEBUG: Updating existing gear, data has label = "${this.data.label || 'none'}"`);
+          debugLog("LABEL", `Updating existing gear, data has label = "${this.data.label || 'none'}"`);
           
           const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
             method: 'PUT',
@@ -264,11 +267,11 @@ export class Gear {
           if (!updateResponse.ok) {
             console.warn(`Failed to update gear ${this.data.id}:`, await updateResponse.text());
           } else {
-            console.log(`LABEL DEBUG: Successfully updated gear with new data`);
+            debugLog("LABEL", `Successfully updated gear with new data`);
           }
         } else {
           // Create new gear
-          console.log(`LABEL DEBUG: Creating new gear, data has label = "${this.data.label || 'none'}"`);
+          debugLog("LABEL", `Creating new gear, data has label = "${this.data.label || 'none'}"`);
           
           const createResponse = await fetch('/api/gears', {
             method: 'POST',
@@ -327,21 +330,23 @@ export class Gear {
     } else {
       // Server-side: Use KV directly
       try {
-        console.log(`GEAR-SAVE - Server side: Saving gear ${this.data.id} to KV`);
-        console.log(`GEAR-SAVE - Log entries before save: ${this.data.log?.length || 0}`);
+        console.log(`Saving gear ${this.data.id} to KV`);
+        debugLog("GEAR-SAVE", `Server side: Saving gear ${this.data.id} to KV with ${this.data.log?.length || 0} log entries`);
         
         await saveToKV(`gear:${this.data.id}`, this.data);
-        console.log(`GEAR-SAVE - Successfully saved gear ${this.data.id} to KV`);
+        debugLog("GEAR-SAVE", `Successfully saved gear ${this.data.id} to KV`);
         
-        // Verify the save worked
-        const verifiedData = await getFromKV<GearData>(`gear:${this.data.id}`);
-        if (verifiedData) {
-          console.log(`GEAR-SAVE - Verified saved gear has ${verifiedData.log?.length || 0} log entries`);
-        } else {
-          console.error(`GEAR-SAVE - ERROR: Failed to verify saved gear data!`);
+        // Verify the save worked (only in debug mode)
+        if (isDebugLoggingEnabled()) {
+          const verifiedData = await getFromKV<GearData>(`gear:${this.data.id}`);
+          if (verifiedData) {
+            debugLog("GEAR-SAVE", `Verified saved gear has ${verifiedData.log?.length || 0} log entries`);
+          } else {
+            console.error(`Failed to verify saved gear data!`);
+          }
         }
       } catch (kvError) {
-        console.error(`GEAR-SAVE - Error saving to KV:`, kvError);
+        console.error(`Error saving to KV:`, kvError);
       }
     }
   }
@@ -387,19 +392,16 @@ export class Gear {
     console.log(`Clearing log for gear ${this.id}`);
     this.data.log = [];
     
-    // Make sure the log array is actually empty
-    console.log(`Log array length after clearing: ${this.data.log.length}`);
+    // Debug log for verification
+    debugLog("LOG", `Log array length after clearing: ${this.data.log.length}`);
     
     // Save to persistent storage
     await this.save();
     
-    // Verify the save worked
-    console.log(`Gear saved after clearing log`);
-    
     // If we're in the browser, also explicitly update via API
     if (typeof window !== 'undefined') {
       try {
-        console.log(`Explicitly updating gear ${this.id} via API to clear logs`);
+        debugLog("LOG", `Explicitly updating gear ${this.id} via API to clear logs`);
         const response = await fetch(`/api/gears/${this.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -411,7 +413,7 @@ export class Gear {
         if (!response.ok) {
           console.error(`Failed to clear log via API: ${response.status}`);
         } else {
-          console.log(`Successfully cleared log via API`);
+          debugLog("LOG", `Successfully cleared log via API`);
         }
       } catch (err) {
         console.error("Error clearing log via API:", err);
@@ -420,10 +422,11 @@ export class Gear {
   }
 
   async setLabel(label: string) {
-    console.log(`LABEL DEBUG: setLabel called with label: "${label}" (length: ${label.length}, type: ${typeof label})`);
+    console.log(`Setting label for gear ${this.id}: "${label}"`);
+    debugLog("LABEL", `setLabel called with label: "${label}" (length: ${label.length}, type: ${typeof label})`);
     this.data.label = label;
     await this.save();
-    console.log(`LABEL DEBUG: setLabel completed, current label: "${this.data.label}"`);
+    debugLog("LABEL", `setLabel completed, current label: "${this.data.label}"`);
   }
   
   // Setters
@@ -735,28 +738,32 @@ export class Gear {
 
     // Generate a new label if this completes a message exchange (user then assistant)
     if (role === 'assistant' && this.data.messages.length >= 2) {
-      console.log(`LABEL DEBUG: Detected assistant message following other messages`);
+      debugLog("LABEL", `Detected assistant message following other messages`);
       const previousMessage = this.data.messages[this.data.messages.length - 2];
-      console.log(`LABEL DEBUG: Previous message role: ${previousMessage.role}`);
+      debugLog("LABEL", `Previous message role: ${previousMessage.role}`);
       
       if (previousMessage.role === 'user') {
-        console.log(`LABEL DEBUG: Found message exchange pattern (user→assistant), calling generateLabel()`);
+        console.log(`Generating label for gear ${this.id} after message exchange`);
+        debugLog("LABEL", `Found message exchange pattern (user→assistant), calling generateLabel()`);
         const newLabel = await this.generateLabel();
-        console.log(`LABEL DEBUG: generateLabel() returned: "${newLabel}"`);
+        debugLog("LABEL", `generateLabel() returned: "${newLabel}"`);
         
-        // Log current gear state after label generation
-        console.log(`LABEL DEBUG: After label generation, gear label = "${this.data.label}"`);
-        
-        // Get the saved gear to make sure the label was persisted
-        if (typeof window !== 'undefined') {
-          try {
-            const checkResponse = await fetch(`/api/gears/${this.data.id}`);
-            if (checkResponse.ok) {
-              const serverGear = await checkResponse.json();
-              console.log(`LABEL DEBUG: Server gear label after save: "${serverGear.label}"`);
+        // Only run verification checks in debug mode
+        if (isDebugLoggingEnabled()) {
+          // Log current gear state after label generation
+          debugLog("LABEL", `After label generation, gear label = "${this.data.label}"`);
+          
+          // Get the saved gear to make sure the label was persisted
+          if (typeof window !== 'undefined') {
+            try {
+              const checkResponse = await fetch(`/api/gears/${this.data.id}`);
+              if (checkResponse.ok) {
+                const serverGear = await checkResponse.json();
+                debugLog("LABEL", `Server gear label after save: "${serverGear.label}"`);
+              }
+            } catch (err) {
+              console.warn("Error checking server gear label:", err);
             }
-          } catch (err) {
-            console.warn("Error checking server gear label:", err);
           }
         }
       }
@@ -771,8 +778,8 @@ export class Gear {
   
   async generateLabel(): Promise<string> {
     try {
-      console.log(`LABEL DEBUG: Generating label for gear ${this.id}`);
-      console.log(`LABEL DEBUG: Current messages:`, this.data.messages);
+      console.log(`Generating label for gear ${this.id}`);
+      debugLog("LABEL", `Current messages for label generation:`, this.data.messages);
       
       // Generate a concise label based on the gear's messages
       const prompt = `Based on this conversation, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
@@ -786,11 +793,11 @@ Here is the conversation:
 ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 `;
 
-      console.log(`LABEL DEBUG: Sending prompt for label generation:`, prompt.substring(0, 200) + '...');
+      debugLog("LABEL", `Sending prompt for label generation: ${prompt.substring(0, 200)}...`);
       
       // Use the LLM to generate a label
       const response = await this.processWithSpecialPrompt(prompt);
-      console.log(`LABEL DEBUG: Got raw response for label:`, response);
+      debugLog("LABEL", `Got raw response for label: ${response}`);
       
       // Clean the response if needed (remove quotes, etc.)
       let cleanedLabel;
@@ -800,8 +807,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           response.includes('e:{"finish') || 
           response.includes('d:{"finish')) {
         
-        console.log("LABEL DEBUG: Detected SSE metadata in response, extracting text parts");
-        console.log("LABEL DEBUG: Raw response:", response);
+        debugLog("LABEL", "Detected SSE metadata in response, extracting text parts");
         
         // Try approach 1: Extract text segments by looking for completions
         const textSegments = [];
@@ -810,41 +816,41 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         
         while ((match = regex.exec(response)) !== null) {
           textSegments.push(match[1]);
-          console.log(`LABEL DEBUG: Found text segment: "${match[1]}"`);
+          debugLog("LABEL", `Found text segment: "${match[1]}"`);
         }
         
         if (textSegments.length > 0) {
           // Join the segments without spaces (the spaces are already in the text)
           const rawText = textSegments.join('');
-          console.log("LABEL DEBUG: Raw joined text:", rawText);
+          debugLog("LABEL", `Raw joined text: ${rawText}`);
           
           // Clean up any potential weird spacing issues
           cleanedLabel = rawText
             .replace(/\s+/g, ' ')  // Convert multiple spaces to single space
             .trim();
             
-          console.log("LABEL DEBUG: Normalized spacing:", cleanedLabel);
+          debugLog("LABEL", `Normalized spacing: ${cleanedLabel}`);
         } else {
           // Try approach 2: Look for a clean text block in the response
           const cleanTextMatch = response.match(/"([^"]{3,})"/);
           if (cleanTextMatch && cleanTextMatch[1]) {
             cleanedLabel = cleanTextMatch[1].trim();
-            console.log("LABEL DEBUG: Found clean text block:", cleanedLabel);
+            debugLog("LABEL", `Found clean text block: ${cleanedLabel}`);
           } else {
             // Fallback to basic cleaning
             cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
-            console.log("LABEL DEBUG: Using fallback cleaning:", cleanedLabel);
+            debugLog("LABEL", `Using fallback cleaning: ${cleanedLabel}`);
           }
         }
       } else {
         // Normal response - just clean and trim
         cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
-        console.log("LABEL DEBUG: Normal response cleaning:", cleanedLabel);
+        debugLog("LABEL", `Normal response cleaning: ${cleanedLabel}`);
       }
       
       // Fix any unexpected escaping (like backslashes) in the label
       cleanedLabel = cleanedLabel.replace(/\\+/g, '');
-      console.log(`LABEL DEBUG: Label after escape character cleanup: "${cleanedLabel}"`);
+      debugLog("LABEL", `Label after escape character cleanup: "${cleanedLabel}"`);
       
       // Ensure we're not getting JSON-like responses with quotes
       if (cleanedLabel.includes('"') && (cleanedLabel.startsWith('{') || cleanedLabel.startsWith('['))) {
@@ -862,18 +868,18 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           }
         } catch (e) {
           // Not valid JSON, continue with current value
-          console.warn("LABEL DEBUG: Failed to parse potential JSON label:", e);
+          debugLog("LABEL", `Failed to parse potential JSON label: ${e}`);
         }
       }
       
-      console.log(`LABEL DEBUG: Cleaned label: "${cleanedLabel}"`);
+      console.log(`Generated label: "${cleanedLabel}"`);
       
       // Update the label
       this.data.label = cleanedLabel;
-      console.log(`LABEL DEBUG: Set gear.data.label = "${this.data.label}"`);
+      debugLog("LABEL", `Set gear.data.label = "${this.data.label}"`);
       
       await this.save();
-      console.log(`LABEL DEBUG: Saved gear with new label "${this.data.label}"`);
+      debugLog("LABEL", `Saved gear with new label "${this.data.label}"`);
       
       return cleanedLabel;
     } catch (error) {
@@ -1318,9 +1324,11 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       return;
     }
     
-    // Log all output URLs for debugging
-    console.log(`FORWARDING - Gear ${this.id} forwarding to ${this.outputUrls.length} gears`);
-    console.log(`FORWARDING - Gear ${this.id} outputUrls:`, JSON.stringify(this.outputUrls));
+    // Log essential information
+    console.log(`Forwarding from gear ${this.id} to ${this.outputUrls.length} connected gears`);
+    
+    // Additional debug information
+    debugLog("FORWARDING", `Gear ${this.id} outputUrls: ${JSON.stringify(this.outputUrls)}`);
     
     for (const url of this.outputUrls) {
       const newMessageId = crypto.randomUUID();
@@ -1331,7 +1339,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         // REMOVE any /process suffix if it exists
         if (fullUrl.endsWith('/process')) {
           fullUrl = fullUrl.substring(0, fullUrl.length - 8); // Remove "/process" 
-          console.log(`FORWARDING - Removing "/process" suffix: ${url} -> ${fullUrl}`);
+          debugLog("FORWARDING", `Removing "/process" suffix: ${url} -> ${fullUrl}`);
         }
         
         // Make sure logs are created in receiving gears by not passing no_log=true
@@ -1339,28 +1347,29 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         if (fullUrl.includes('no_log=true')) {
           // Replace no_log=true with no_log=false
           fullUrl = fullUrl.replace('no_log=true', 'no_log=false');
-          console.log(`FORWARDING - Fixed URL to enable logs: ${fullUrl}`);
+          debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
         }
         
-        console.log(`FORWARDING - Gear ${this.id} forwarding to URL: ${fullUrl}`);
+        debugLog("FORWARDING", `Gear ${this.id} forwarding to URL: ${fullUrl}`);
         
         // Edge Runtime requires absolute URLs for fetch
         if (fullUrl.startsWith('/')) {
           // For browser context, use window.location
           if (typeof window !== 'undefined') {
             fullUrl = `${window.location.origin}${fullUrl}`;
-            console.log(`FORWARDING - Client-side URL: ${fullUrl}`);
+            debugLog("FORWARDING", `Client-side URL: ${fullUrl}`);
           } else {
             // In server context (edge runtime) we must use absolute URLs
             // Try to get from env vars first, fallback to localhost for development
             const baseURL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333';
             fullUrl = `${baseURL}${fullUrl}`;
-            console.log(`FORWARDING - Server-side absolute URL: ${fullUrl}`);
+            debugLog("FORWARDING", `Server-side absolute URL: ${fullUrl}`);
           }
         }
         
         try {
-          console.log(`FORWARDING - Sending request to ${fullUrl}`);
+          // Only critical logs in production, details in debug mode
+          debugLog("FORWARDING", `Sending request to ${fullUrl}`);
           
           // Each gear is the source for its own forwarded messages
           const response = await fetch(fullUrl, {
@@ -1378,20 +1387,20 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           
           if (!response.ok) {
             const errorText = await response.text();
-            console.error(`FORWARDING - Error response from ${fullUrl}: ${response.status} ${errorText}`);
+            console.error(`Error response from ${fullUrl}: ${response.status} ${errorText}`);
             throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
           } else {
-            console.log(`FORWARDING - Successfully forwarded from ${this.id} to ${fullUrl}`);
+            debugLog("FORWARDING", `Successfully forwarded from ${this.id} to ${fullUrl}`);
           }
         } catch (fetchError) {
           // Log the detailed error for debugging
-          console.error(`FORWARDING - Fetch error for ${fullUrl}:`, fetchError);
+          console.error(`Fetch error for ${fullUrl}:`, fetchError);
           
           // Fall back to log the error and continue with other URLs
-          console.log(`FORWARDING - Will continue with other URLs despite error`);
+          debugLog("FORWARDING", `Will continue with other URLs despite error`);
         }
       } catch (error) {
-        console.error(`FORWARDING - Error forwarding from ${this.id} to ${url}:`, error);
+        console.error(`Error forwarding from ${this.id} to ${url}:`, error);
       }
     }
   }

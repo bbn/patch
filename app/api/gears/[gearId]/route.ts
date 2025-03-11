@@ -1,5 +1,6 @@
 import { Gear } from "@/lib/models/Gear";
 import { Message, Role } from "@/lib/models/types";
+import { debugLog } from "@/lib/utils";
 
 export const runtime = "edge";
 
@@ -44,24 +45,29 @@ export async function POST(
     // Handle both the new format and legacy format for backward compatibility
     let message, source, sourceLabel;
     
-    // Debug log the incoming request for troubleshooting
-    console.log(`GEAR-LOG - [${gearId}] Incoming request`);
-    console.log(`GEAR-LOG - [${gearId}] Request body:`, JSON.stringify(requestBody, null, 2));
-    console.log(`GEAR-LOG - [${gearId}] Query params: no_forward=${noForward}, no_log=${noLog}`);
-    console.log(`GEAR-LOG - [${gearId}] URL:`, req.url);
+    // Only log essential info for production, detailed logs in debug mode
+    console.log(`Processing gear ${gearId} request`);
+    
+    // Debug log the incoming request for troubleshooting (only in debug mode)
+    debugLog("API", `[${gearId}] Incoming request`);
+    debugLog("API", `[${gearId}] Request body: ${JSON.stringify(requestBody, null, 2)}`);
+    debugLog("API", `[${gearId}] Query params: no_forward=${noForward}, no_log=${noLog}`);
+    debugLog("API", `[${gearId}] URL: ${req.url}`);
     
     if (requestBody.data !== undefined && requestBody.source_gear !== undefined) {
       // New format - receiving a forwarded message from another gear
       message = requestBody.data;
       source = requestBody.source_gear.id || 'unknown';
       sourceLabel = requestBody.source_gear.label || source;
-      console.log(`GEAR-LOG - [${gearId}] Received message from gear "${sourceLabel}" (${source})")`);
+      console.log(`Received message for gear ${gearId} from source gear "${sourceLabel}"`);
+      debugLog("API", `[${gearId}] Full source details: gear "${sourceLabel}" (${source})`);
     } else {
       // Legacy format - direct input not being forwarded
       message = requestBody.message;
       source = requestBody.source || 'direct';
       sourceLabel = source;
-      console.log(`GEAR-LOG - [${gearId}] Received message from legacy source: ${source}`);
+      console.log(`Received message for gear ${gearId} from source: ${source}`);
+      debugLog("API", `[${gearId}] Legacy source format: ${source}`);
     }
 
     // Try to find the gear
@@ -82,7 +88,7 @@ export async function POST(
     if (!noLog) {
       if (!gear.data.log) {
         gear.data.log = [];
-        console.log(`GEAR-LOG - [${gearId}] Initialized empty log array`);
+        debugLog("API", `[${gearId}] Initialized empty log array`);
       }
       
       // Create source object
@@ -90,7 +96,8 @@ export async function POST(
         ? { id: source, label: sourceLabel } 
         : source;
       
-      console.log(`GEAR-LOG - [${gearId}] Creating log entry from source ${JSON.stringify(sourceObj)}`);
+      console.log(`Creating log entry for gear ${gearId}`);
+      debugLog("API", `[${gearId}] Creating log entry from source ${JSON.stringify(sourceObj)}`);
       
       try {
         // Add a single log entry
@@ -106,36 +113,38 @@ export async function POST(
           gear.data.log = gear.data.log.slice(0, 50);
         }
         
-        console.log(`GEAR-LOG - [${gearId}] Created log entry (log count: ${gear.data.log.length})`);
+        debugLog("API", `[${gearId}] Created log entry (log count: ${gear.data.log.length})`);
         
-        // Before saving, validate the log was actually added
+        // Only run validation in debug mode
         if (gear.data.log.length === 0) {
-          console.error(`GEAR-LOG - [${gearId}] ERROR: Log array is still empty after adding entry!`);
+          console.error(`ERROR: Log array is still empty after adding entry!`);
         } else {
-          console.log(`GEAR-LOG - [${gearId}] Latest log entry timestamp: ${gear.data.log[0].timestamp}`);
+          debugLog("API", `[${gearId}] Latest log entry timestamp: ${gear.data.log[0].timestamp}`);
         }
       } catch (logError) {
-        console.error(`GEAR-LOG - [${gearId}] Error creating log entry:`, logError);
+        console.error(`Error creating log entry:`, logError);
       }
     } else {
-      console.log(`GEAR-LOG - [${gearId}] Skipping log creation (no_log=true)`);
+      debugLog("API", `[${gearId}] Skipping log creation (no_log=true)`);
     }
     
     // Save the gear with the updated output (and possibly log entry)
-    console.log(`GEAR-LOG - [${gearId}] Saving gear with log count: ${gear.data.log?.length || 0}`);
+    console.log(`Saving gear ${gearId} with ${gear.data.log?.length || 0} log entries`);
     try {
       await gear.save();
-      console.log(`GEAR-LOG - [${gearId}] Successfully saved gear`);
+      debugLog("API", `[${gearId}] Successfully saved gear`);
       
-      // Verify the save worked by refetching the gear
-      const verifyGear = await Gear.findById(gearId);
-      if (verifyGear) {
-        console.log(`GEAR-LOG - [${gearId}] Verified saved gear has ${verifyGear.log.length} log entries`);
-      } else {
-        console.error(`GEAR-LOG - [${gearId}] ERROR: Could not verify gear was saved!`);
+      // Only verify in debug mode to avoid extra database ops in production
+      if (gear.data.log && debugLog !== console.log) {
+        const verifyGear = await Gear.findById(gearId);
+        if (verifyGear) {
+          debugLog("API", `[${gearId}] Verified saved gear has ${verifyGear.log.length} log entries`);
+        } else {
+          console.error(`ERROR: Could not verify gear was saved!`);
+        }
       }
     } catch (saveError) {
-      console.error(`GEAR-LOG - [${gearId}] Error saving gear:`, saveError);
+      console.error(`Error saving gear:`, saveError);
     }
     
     // Prepare response
@@ -143,26 +152,26 @@ export async function POST(
     
     // Only forward output if not explicitly disabled via query parameter
     if (!noForward && gear.outputUrls?.length > 0) {
-      console.log(`GEAR-LOG - [${gearId}] Forwarding output to ${gear.outputUrls.length} connected gears`);
+      console.log(`Forwarding output to ${gear.outputUrls.length} connected gears`);
       
-        // In Edge Runtime, we need to just start the processing without waiting
+      // In Edge Runtime, we need to just start the processing without waiting
       // We'll fire and forget, letting the runtime handle background work
       // This is not ideal but needed as a workaround for current Next.js Edge API
       (async () => {
         try {
-          console.log(`GEAR-LOG - [${gearId}] Starting async forwarding...`);
+          debugLog("API", `[${gearId}] Starting async forwarding...`);
           await gear.forwardOutputToGears(output);
-          console.log(`GEAR-LOG - [${gearId}] Successfully completed async forwarding`);
+          debugLog("API", `[${gearId}] Successfully completed async forwarding`);
         } catch (forwardError) {
-          console.error(`GEAR-LOG - [${gearId}] Error in async forwarding:`, forwardError);
+          console.error(`Error in async forwarding:`, forwardError);
         }
       })();
       
-      console.log(`GEAR-LOG - [${gearId}] Forwarding started asynchronously`);
+      debugLog("API", `[${gearId}] Forwarding started asynchronously`);
     } else if (noForward) {
-      console.log(`GEAR-LOG - [${gearId}] Not forwarding (no_forward=true)`);
+      debugLog("API", `[${gearId}] Not forwarding (no_forward=true)`);
     } else {
-      console.log(`GEAR-LOG - [${gearId}] No output URLs to forward to`);
+      debugLog("API", `[${gearId}] No output URLs to forward to`);
     }
     
     // Return the prepared response
