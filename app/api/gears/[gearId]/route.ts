@@ -31,13 +31,20 @@ export async function POST(
     const resolvedParams = await params;
     console.log("Gear API called with gearId:", resolvedParams.gearId);
     
-    // Check query parameters
+    // Check query parameters using positive flags
     const url = new URL(req.url);
-    const noForward = url.searchParams.get('no_forward') === 'true';
     
-    // Default behavior should create logs unless explicitly disabled
-    // Only if 'no_log' is exactly 'true' should logs be disabled
-    const noLog = url.searchParams.get('no_log') === 'true';
+    // Support both negative and positive flags for forward parameter (prefer positive)
+    const forwardParam = url.searchParams.get('forward');
+    const noForwardParam = url.searchParams.get('no_forward');
+    // Default to true, explicitly set to false only when forward=false or no_forward=true
+    const shouldForward = forwardParam !== 'false' && noForwardParam !== 'true';
+    
+    // Support both negative and positive flags for log parameter (prefer positive)
+    const createLogParam = url.searchParams.get('create_log');
+    const noLogParam = url.searchParams.get('no_log');
+    // Default to true, explicitly set to false only when create_log=false or no_log=true
+    const shouldCreateLog = createLogParam !== 'false' && noLogParam !== 'true';
     
     const requestBody = await req.json();
     const gearId = resolvedParams.gearId;
@@ -51,7 +58,7 @@ export async function POST(
     // Debug log the incoming request for troubleshooting (only in debug mode)
     debugLog("API", `[${gearId}] Incoming request`);
     debugLog("API", `[${gearId}] Request body: ${JSON.stringify(requestBody, null, 2)}`);
-    debugLog("API", `[${gearId}] Query params: no_forward=${noForward}, no_log=${noLog}`);
+    debugLog("API", `[${gearId}] Query params: forward=${shouldForward}, create_log=${shouldCreateLog}`);
     debugLog("API", `[${gearId}] URL: ${req.url}`);
     
     if (requestBody.data !== undefined && requestBody.source_gear !== undefined) {
@@ -84,8 +91,8 @@ export async function POST(
     // Store the output
     gear.data.output = output;
     
-    // Create a log entry unless explicitly disabled
-    if (!noLog) {
+    // Create a log entry based on shouldCreateLog flag
+    if (shouldCreateLog) {
       if (!gear.data.log) {
         gear.data.log = [];
         debugLog("API", `[${gearId}] Initialized empty log array`);
@@ -125,7 +132,7 @@ export async function POST(
         console.error(`Error creating log entry:`, logError);
       }
     } else {
-      debugLog("API", `[${gearId}] Skipping log creation (no_log=true)`);
+      debugLog("API", `[${gearId}] Skipping log creation (create_log=false)`);
     }
     
     // Save the gear with the updated output (and possibly log entry)
@@ -150,8 +157,8 @@ export async function POST(
     // Prepare response
     const response = Response.json({ output });
     
-    // Only forward output if not explicitly disabled via query parameter
-    if (!noForward && gear.outputUrls?.length > 0) {
+    // Forward output based on shouldForward flag
+    if (shouldForward && gear.outputUrls?.length > 0) {
       console.log(`Forwarding output to ${gear.outputUrls.length} connected gears`);
       
       // In Edge Runtime, we need to just start the processing without waiting
@@ -168,8 +175,8 @@ export async function POST(
       })();
       
       debugLog("API", `[${gearId}] Forwarding started asynchronously`);
-    } else if (noForward) {
-      debugLog("API", `[${gearId}] Not forwarding (no_forward=true)`);
+    } else if (!shouldForward) {
+      debugLog("API", `[${gearId}] Not forwarding (forward=false)`);
     } else {
       debugLog("API", `[${gearId}] No output URLs to forward to`);
     }

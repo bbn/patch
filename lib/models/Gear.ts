@@ -598,12 +598,12 @@ export class Gear {
     }
     
     try {
-      // For examples, directly process with the API using no_forward=true and no_log=true
+      // For examples, directly process with the API using forward=false and create_log=false
       // to prevent both forwarding outputs and creating log entries when processing examples
       if (typeof window !== 'undefined') {
-        // In browser, use the API with no_forward and no_log
+        // In browser, use the API with forward=false and create_log=false
         try {
-          const response = await fetch(`/api/gears/${this.data.id}?no_forward=true&no_log=true`, {
+          const response = await fetch(`/api/gears/${this.data.id}?forward=false&create_log=false`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1342,11 +1342,15 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           debugLog("FORWARDING", `Removing "/process" suffix: ${url} -> ${fullUrl}`);
         }
         
-        // Make sure logs are created in receiving gears by not passing no_log=true
-        // If URL already has query params with no_log=true, remove that parameter
+        // Make sure logs are created in receiving gears by using create_log=true
+        // If URL already has parameters that would disable logging, update them
         if (fullUrl.includes('no_log=true')) {
-          // Replace no_log=true with no_log=false
-          fullUrl = fullUrl.replace('no_log=true', 'no_log=false');
+          // Replace no_log=true with create_log=true
+          fullUrl = fullUrl.replace('no_log=true', 'create_log=true');
+          debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
+        } else if (fullUrl.includes('create_log=false')) {
+          // Replace create_log=false with create_log=true
+          fullUrl = fullUrl.replace('create_log=false', 'create_log=true');
           debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
         }
         

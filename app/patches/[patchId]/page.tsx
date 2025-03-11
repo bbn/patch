@@ -1042,8 +1042,8 @@ export default function PatchPage() {
         
         // For the "Send Output" button case:
         // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
-        // So we use no_log=true for this gear, but the receiving gears should create logs
-        await fetch(`/api/gears/${gear.id}?no_log=true`, {
+        // So we use create_log=false for this gear, but the receiving gears should create logs
+        await fetch(`/api/gears/${gear.id}?create_log=false`, {
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
