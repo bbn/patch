@@ -16,7 +16,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PatchSummary {
   id: string;
@@ -32,7 +31,6 @@ export default function PatchesPage() {
   const [patches, setPatches] = useState<PatchSummary[]>([]);
   const [newPatchName, setNewPatchName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const loadPatches = async () => {
     try {
@@ -138,30 +136,6 @@ export default function PatchesPage() {
   useEffect(() => {
     loadPatches();
   }, []);
-  
-  // Function to regenerate all patch descriptions and refresh the list
-  const handleRegenerateDescriptions = async () => {
-    setRefreshing(true);
-    try {
-      // Call the API to regenerate all descriptions
-      const response = await fetch('/api/patches?regenerate_all_descriptions=true', {
-        method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      
-      if (response.ok) {
-        console.log('Descriptions regenerated successfully');
-        // Reload the patches list to get updated descriptions
-        await loadPatches();
-      } else {
-        console.error('Failed to regenerate descriptions');
-      }
-    } catch (error) {
-      console.error('Error regenerating descriptions:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const handleCreatePatch = async () => {
     // If name is empty, use a default name
@@ -252,42 +226,6 @@ export default function PatchesPage() {
 
   return (
     <div className="container mx-auto p-4">
-      {/* Header with refresh button */}
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Patches</h1>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRegenerateDescriptions} 
-                disabled={refreshing || loading}
-              >
-                {refreshing ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Updating...
-                  </>
-                ) : (
-                  <>
-                    <svg className="mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
-                    </svg>
-                    Refresh Descriptions
-                  </>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Regenerate all patch descriptions using AI</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
 
       {loading ? (
         <div className="flex justify-center p-8">
