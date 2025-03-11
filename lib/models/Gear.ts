@@ -335,16 +335,6 @@ export class Gear {
         
         await saveToKV(`gear:${this.data.id}`, this.data);
         debugLog("GEAR-SAVE", `Successfully saved gear ${this.data.id} to KV`);
-        
-        // Verify the save worked (only in debug mode)
-        if (isDebugLoggingEnabled()) {
-          const verifiedData = await getFromKV<GearData>(`gear:${this.data.id}`);
-          if (verifiedData) {
-            debugLog("GEAR-SAVE", `Verified saved gear has ${verifiedData.log?.length || 0} log entries`);
-          } else {
-            console.error(`Failed to verify saved gear data!`);
-          }
-        }
       } catch (kvError) {
         console.error(`Error saving to KV:`, kvError);
       }
