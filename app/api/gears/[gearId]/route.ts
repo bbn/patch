@@ -129,8 +129,12 @@ export async function POST(
         const currentLog = gear.log || [];
         const updatedLog = [logEntry, ...currentLog].slice(0, 50); // Keep only 50 entries
         
-        // Update using the Edit method
-        await fetch(`/api/gears/${gearId}`, {
+        // Update using the Edit method - use absolute URL for Edge environment
+        const baseUrl = process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}` 
+          : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          
+        await fetch(`${baseUrl}/api/gears/${gearId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

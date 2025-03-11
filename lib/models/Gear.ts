@@ -1480,8 +1480,11 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             debugLog("FORWARDING", `Client-side URL: ${fullUrl}`);
           } else {
             // In server context (edge runtime) we must use absolute URLs
-            // Try to get from env vars first, fallback to localhost for development
-            const baseURL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333';
+            // Check for Vercel deployment URL first, try NEXT_PUBLIC_APP_URL as fallback,
+            // and if all else fails use localhost for development
+            const baseURL = process.env.VERCEL_URL 
+              ? `https://${process.env.VERCEL_URL}` 
+              : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
             fullUrl = `${baseURL}${fullUrl}`;
             debugLog("FORWARDING", `Server-side absolute URL: ${fullUrl}`);
           }
