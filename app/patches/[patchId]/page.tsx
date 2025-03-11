@@ -489,6 +489,12 @@ export default function PatchPage() {
         console.log(`Gear ${gearId} found locally`);
         setGearMessages(gear.messages);
         setExampleInputs(gear.exampleInputs);
+        
+        console.log(`Client-side log entries for gear ${gearId}:`, {
+          hasLog: !!gear.log,
+          logLength: gear.log?.length || 0
+        });
+        
         setLogEntries(gear.log || []);
         
         // If we also have server data, make sure they're in sync
@@ -503,6 +509,11 @@ export default function PatchPage() {
           
           // Get log entries from server if available
           if (serverGear.log) {
+            console.log(`Server-side log entries for gear ${gearId}:`, {
+              hasLog: !!serverGear.log,
+              logLength: serverGear.log?.length || 0
+            });
+            
             setLogEntries(serverGear.log);
           }
         }
@@ -1037,6 +1048,7 @@ export default function PatchPage() {
     }
   };
   
+  
   // Handle sending an example output to connected gears
   const handleSendOutput = async (exampleId: string, output: any) => {
     if (!selectedNode) return;
@@ -1079,8 +1091,9 @@ export default function PatchPage() {
         
         // For the "Send Output" button case:
         // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
-        // So we use create_log=false for this gear, but the receiving gears should create logs
-        await fetch(`/api/gears/${gear.id}?create_log=false`, {
+        // So we use no_log=true for this gear (to be clear we don't want logs)
+        // The forwarding code will ensure that the no_log parameter is not carried over to receiving gears
+        await fetch(`/api/gears/${gear.id}?no_log=true`, {
           method: 'POST', 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1092,6 +1105,8 @@ export default function PatchPage() {
         console.log(`DEBUG - Send Output: Called API on server for gear ${gear.id} with example output`);
         
         console.log(`Sent output from example ${exampleId} to ${gear.outputUrls.length} connected gears`);
+        
+        // No need to refresh logs - they should update in real-time
       } else {
         console.error(`Could not find gear ${gearId}`);
       }
@@ -1528,7 +1543,27 @@ export default function PatchPage() {
                 {/* Real-time status updates listener */}
                 <GearStatusListener 
                   gearIds={activeGearIds} 
-                  onStatusChange={handleGearStatusChange} 
+                  onStatusChange={handleGearStatusChange}
+                  onLogUpdate={async (gearId, logCount) => {
+                    // When logs are updated for a gear, refresh them if this is the currently selected gear
+                    if (selectedNode) {
+                      const node = nodes.find(n => n.id === selectedNode);
+                      if (node?.data?.gearId === gearId) {
+                        console.log(`Refreshing logs for selected gear ${gearId} after log update event`);
+                        try {
+                          const response = await fetch(`/api/gears/${gearId}`);
+                          if (response.ok) {
+                            const freshData = await response.json();
+                            if (freshData.log) {
+                              setLogEntries(freshData.log);
+                            }
+                          }
+                        } catch (error) {
+                          console.error("Error refreshing gear logs:", error);
+                        }
+                      }
+                    }
+                  }}
                 />
               </ReactFlow>
             </div>

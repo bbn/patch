@@ -3,9 +3,10 @@ import { useEffect, useCallback } from 'react';
 interface GearStatusListenerProps {
   gearIds: string[];
   onStatusChange: (gearId: string, status: 'processing' | 'complete' | 'error') => void;
+  onLogUpdate?: (gearId: string, logCount: number) => void;
 }
 
-export function GearStatusListener({ gearIds, onStatusChange }: GearStatusListenerProps) {
+export function GearStatusListener({ gearIds, onStatusChange, onLogUpdate }: GearStatusListenerProps) {
   const subscribeToGear = useCallback((gearId: string) => {
     if (!gearId) return null;
     
@@ -21,6 +22,12 @@ export function GearStatusListener({ gearIds, onStatusChange }: GearStatusListen
           onStatusChange(gearId, 'complete');
         } else if (data.status === 'error') {
           onStatusChange(gearId, 'error');
+        } else if (data.status === 'log_updated' && onLogUpdate) {
+          // Handle log update events
+          console.log(`Received log_updated event for gear ${gearId}:`, data);
+          if (data.data && typeof data.data.logCount === 'number') {
+            onLogUpdate(gearId, data.data.logCount);
+          }
         }
       } catch (error) {
         console.error(`Error processing gear status event:`, error);

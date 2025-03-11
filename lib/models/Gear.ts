@@ -1458,16 +1458,48 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           debugLog("FORWARDING", `Removing "/process" suffix: ${url} -> ${fullUrl}`);
         }
         
-        // Make sure logs are created in receiving gears by using create_log=true
-        // If URL already has parameters that would disable logging, update them
-        if (fullUrl.includes('no_log=true')) {
-          // Replace no_log=true with create_log=true
-          fullUrl = fullUrl.replace('no_log=true', 'create_log=true');
-          debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
-        } else if (fullUrl.includes('create_log=false')) {
-          // Replace create_log=false with create_log=true
-          fullUrl = fullUrl.replace('create_log=false', 'create_log=true');
-          debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
+        // Make sure logs are created in receiving gears
+        // Parse the URL to handle query parameters properly and remove any that would prevent log creation
+        try {
+          const urlObject = new URL(fullUrl, 'http://placeholder.com');
+          
+          // Remove parameters that would disable logging
+          if (urlObject.searchParams.has('no_log')) {
+            urlObject.searchParams.delete('no_log');
+          }
+          
+          // If create_log=false is present, remove it (use the default behavior of creating logs)
+          if (urlObject.searchParams.has('create_log') && urlObject.searchParams.get('create_log') === 'false') {
+            urlObject.searchParams.delete('create_log');
+          }
+          
+          // Get the modified path+query
+          const modifiedPath = urlObject.pathname + urlObject.search;
+          fullUrl = modifiedPath;
+          
+          debugLog("FORWARDING", `Ensured logs will be created in forwarded request: ${fullUrl}`);
+        } catch (urlError) {
+          // If URL parsing fails, try simple string replacement
+          // Remove parameters that would disable logging
+          if (fullUrl.includes('no_log=true')) {
+            fullUrl = fullUrl.replace(/[?&]no_log=true(&|$)/g, '$1');
+            debugLog("FORWARDING", `Removed no_log=true using string replacement: ${fullUrl}`);
+          }
+          
+          if (fullUrl.includes('create_log=false')) {
+            fullUrl = fullUrl.replace(/[?&]create_log=false(&|$)/g, '$1');
+            debugLog("FORWARDING", `Removed create_log=false using string replacement: ${fullUrl}`);
+          }
+          
+          // Fix the URL if we've removed the first parameter and left a trailing &
+          if (fullUrl.includes('?&')) {
+            fullUrl = fullUrl.replace('?&', '?');
+          }
+          
+          // Fix the URL if we've removed the only parameter
+          if (fullUrl.endsWith('?')) {
+            fullUrl = fullUrl.substring(0, fullUrl.length - 1);
+          }
         }
         
         debugLog("FORWARDING", `Gear ${this.id} forwarding to URL: ${fullUrl}`);

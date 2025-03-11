@@ -24,17 +24,39 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
 
     const loadGear = async () => {
       try {
-        const loadedGear = await Gear.findById(gearId);
-        setGear(loadedGear);
+        // Use direct API call to ensure we get fresh data
+        const response = await fetch(`/api/gears/${gearId}`);
         
-        // If gear has output, show it
-        if (loadedGear?.output) {
-          setOutput(loadedGear.output as string);
-        }
-        
-        // Load log entries
-        if (loadedGear?.log) {
-          setLogEntries(loadedGear.log);
+        if (response.ok) {
+          const freshGearData = await response.json();
+          const loadedGear = new Gear(freshGearData);
+          
+          setGear(loadedGear);
+          
+          // If gear has output, show it
+          if (loadedGear?.output) {
+            setOutput(loadedGear.output as string);
+          }
+          
+          // Load log entries
+          if (freshGearData.log) {
+            console.log(`Loaded ${freshGearData.log.length} log entries for gear ${gearId}`);
+            setLogEntries(freshGearData.log);
+          }
+        } else {
+          // Fall back to client-side method if API fails
+          const loadedGear = await Gear.findById(gearId);
+          setGear(loadedGear);
+          
+          // If gear has output, show it
+          if (loadedGear?.output) {
+            setOutput(loadedGear.output as string);
+          }
+          
+          // Load log entries
+          if (loadedGear?.log) {
+            setLogEntries(loadedGear.log);
+          }
         }
       } catch (err) {
         console.error('Error loading gear:', err);
@@ -43,6 +65,13 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
     };
 
     loadGear();
+    
+    // Set up polling to refresh data periodically
+    const pollingInterval = setInterval(loadGear, 3000); // Refresh every 3 seconds
+    
+    return () => {
+      clearInterval(pollingInterval);
+    };
   }, [gearId]);
 
   const handleProcess = async () => {

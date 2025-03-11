@@ -199,7 +199,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {activeTab === 'log' && (
         <div className="flex-grow overflow-y-auto p-2">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-medium">Activity Log</h3>
+            <h3 className="text-sm font-medium">Activity Log ({logEntries.length})</h3>
             {logEntries.length > 0 && onClearLog && (
               <Button 
                 variant="outline" 
@@ -213,37 +213,47 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
           {logEntries.length === 0 ? (
             <div className="text-gray-500 text-xs p-2 text-center">
-              No activity logged yet
+              No activity logged yet for gear {gearId}
             </div>
           ) : (
             <div className="border rounded-md overflow-hidden">
-              {logEntries.map((entry, index) => (
-                <div 
-                  key={`${entry.timestamp}-${index}`} 
-                  className={`border-b last:border-b-0 p-3 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
-                >
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <div>{formatSource(entry.source)}</div>
-                    <div>{formatTimestamp(entry.timestamp)}</div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-xs font-medium mb-1">Input:</div>
-                      <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                        {formatContent(entry.input)}
-                      </div>
+              {logEntries.map((entry, index) => {
+                // Debug logging for each entry
+                console.log(`Log entry ${index}:`, {
+                  source: entry.source,
+                  timestamp: entry.timestamp,
+                  hasInput: !!entry.input,
+                  hasOutput: !!entry.output
+                });
+                
+                return (
+                  <div 
+                    key={`${entry.timestamp}-${index}`} 
+                    className={`border-b last:border-b-0 p-3 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
+                  >
+                    <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <div>{formatSource(entry.source)}</div>
+                      <div>{formatTimestamp(entry.timestamp)}</div>
                     </div>
                     
-                    <div>
-                      <div className="text-xs font-medium mb-1">Output:</div>
-                      <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                        {entry.output ? formatContent(entry.output) : 'No output'}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-xs font-medium mb-1">Input:</div>
+                        <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
+                          {formatContent(entry.input)}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <div className="text-xs font-medium mb-1">Output:</div>
+                        <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
+                          {entry.output ? formatContent(entry.output) : 'No output'}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

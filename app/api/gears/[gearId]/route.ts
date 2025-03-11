@@ -125,22 +125,24 @@ export async function POST(
           source: sourceObj
         };
         
-        // Update the gear via PUT request to itself to add the log entry
+        // Update the gear's log directly instead of using a PUT request
         const currentLog = gear.log || [];
         const updatedLog = [logEntry, ...currentLog].slice(0, 50); // Keep only 50 entries
         
-        // Extract request URL to use as base for absolute URLs in Edge runtime
-        const requestUrl = new URL(req.url);
-        const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
-        debugLog("API", `[${gearId}] Using base URL derived from request: ${baseUrl}`);
-          
-        await fetch(`${baseUrl}/api/gears/${gearId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            log: updatedLog
-          }),
-        });
+        // Save the log directly to the gear object
+        console.log(`Directly updating log for gear ${gearId} with ${updatedLog.length} entries`);
+        gear.data.log = updatedLog;
+        
+        // Make sure to save the gear to KV
+        await gear.save();
+        
+        // Send a status event to notify connected clients that logs have been updated
+        try {
+          const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+          await sendGearStatusEvent(gearId, 'log_updated', { logCount: updatedLog.length });
+        } catch (e) {
+          console.error("Error sending gear log update event:", e);
+        }
         
         debugLog("API", `[${gearId}] Created log entry (log count: ${updatedLog.length})`);
         
@@ -193,6 +195,7 @@ export async function POST(
           const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
           
           debugLog("API", `[${gearId}] Starting async forwarding with base URL: ${baseUrl}`);
+          
           await gear.forwardOutputToGears(output, baseUrl);
           debugLog("API", `[${gearId}] Successfully completed async forwarding`);
         } catch (forwardError) {
