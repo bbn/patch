@@ -57,6 +57,19 @@ export class Patch {
     if (typeof window !== 'undefined') {
       // Client-side: Use the API endpoint
       try {
+        // First retrieve the patch so we know which gears to delete from localStorage
+        let associatedGearIds: string[] = [];
+        try {
+          const patch = await Patch.findById(id);
+          if (patch) {
+            associatedGearIds = patch.nodes.map(node => node.data.gearId);
+            console.log(`Found ${associatedGearIds.length} gears associated with patch ${id}`);
+          }
+        } catch (findError) {
+          console.error(`Error finding patch ${id} before deletion:`, findError);
+        }
+        
+        // Delete the patch via API (which will cascade delete the gears on the server)
         const response = await fetch(`/api/patches/${id}`, {
           method: 'DELETE',
         });
@@ -65,6 +78,7 @@ export class Patch {
         
         // Also clean up localStorage for backward compatibility
         try {
+          // Clean up patch from localStorage
           const savedPatchesStr = localStorage.getItem('patches');
           if (savedPatchesStr) {
             const savedPatches = JSON.parse(savedPatchesStr);
@@ -73,8 +87,21 @@ export class Patch {
               localStorage.setItem('patches', JSON.stringify(filteredPatches));
             }
           }
+          
+          // Also clean up associated gears from localStorage
+          if (associatedGearIds.length > 0) {
+            const savedGearsStr = localStorage.getItem('gears');
+            if (savedGearsStr) {
+              const savedGears = JSON.parse(savedGearsStr);
+              const filteredGears = savedGears.filter((g: {id: string}) => !associatedGearIds.includes(g.id));
+              if (filteredGears.length !== savedGears.length) {
+                localStorage.setItem('gears', JSON.stringify(filteredGears));
+                console.log(`Removed ${savedGears.length - filteredGears.length} gears from localStorage`);
+              }
+            }
+          }
         } catch (error) {
-          console.error(`Error deleting patch ${id} from localStorage:`, error);
+          console.error(`Error cleaning up localStorage during patch deletion:`, error);
         }
         
         return success;
@@ -83,13 +110,40 @@ export class Patch {
         
         // Fallback to just localStorage if API fails
         try {
+          // Find associated gears in localStorage
+          let associatedGearIds: string[] = [];
           const savedPatchesStr = localStorage.getItem('patches');
           if (savedPatchesStr) {
             const savedPatches = JSON.parse(savedPatchesStr);
+            const patchToDelete = savedPatches.find((p: {id: string, nodes?: any[]}) => p.id === id);
+            if (patchToDelete && patchToDelete.nodes) {
+              associatedGearIds = patchToDelete.nodes
+                .filter((node: any) => node.data && node.data.gearId)
+                .map((node: any) => node.data.gearId);
+            }
+          }
+          
+          // Delete the patch from localStorage
+          const savedPatchesStr2 = localStorage.getItem('patches');
+          if (savedPatchesStr2) {
+            const savedPatches = JSON.parse(savedPatchesStr2);
             const filteredPatches = savedPatches.filter((p: {id: string}) => p.id !== id);
             const success = filteredPatches.length !== savedPatches.length;
             if (success) {
               localStorage.setItem('patches', JSON.stringify(filteredPatches));
+              
+              // Also delete associated gears
+              if (associatedGearIds.length > 0) {
+                const savedGearsStr = localStorage.getItem('gears');
+                if (savedGearsStr) {
+                  const savedGears = JSON.parse(savedGearsStr);
+                  const filteredGears = savedGears.filter((g: {id: string}) => !associatedGearIds.includes(g.id));
+                  if (filteredGears.length !== savedGears.length) {
+                    localStorage.setItem('gears', JSON.stringify(filteredGears));
+                    console.log(`Removed ${savedGears.length - filteredGears.length} gears from localStorage`);
+                  }
+                }
+              }
             }
             return success;
           }
@@ -101,13 +155,58 @@ export class Patch {
       }
     } else {
       // Server-side: Use KV directly
-      const deleted = await deleteFromKV(`patch:${id}`);
-      
-      if (deleted) {
-        console.log(`Deleted patch ${id} from KV`);
+      // First retrieve the patch to get all gear IDs
+      try {
+        // Get the patch
+        const patch = await Patch.findById(id);
+        if (!patch) {
+          console.log(`Patch ${id} not found for deletion`);
+          return false;
+        }
+        
+        // Extract all gear IDs from the nodes
+        const gearIds = patch.nodes.map(node => node.data.gearId);
+        
+        // Log how many gears will be deleted
+        console.log(`Deleting patch ${id} with ${gearIds.length} associated gears`);
+        
+        // Delete each gear and track any failures
+        const deletionResults = await Promise.allSettled(
+          gearIds.map(gearId => Gear.deleteById(gearId))
+        );
+        
+        // Log any failures, but continue with patch deletion
+        deletionResults.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            console.error(`Failed to delete gear ${gearIds[index]}:`, result.reason);
+          } else if (!result.value) {
+            console.warn(`Gear ${gearIds[index]} could not be deleted or was not found`);
+          }
+        });
+        
+        // Delete the patch itself
+        const deleted = await deleteFromKV(`patch:${id}`);
+        
+        if (deleted) {
+          console.log(`Deleted patch ${id} from KV along with ${gearIds.length} gears`);
+        }
+        
+        return deleted;
+      } catch (error) {
+        console.error(`Error during cascade deletion of patch ${id}:`, error);
+        
+        // Attempt to delete the patch anyway, even if gear deletion had errors
+        try {
+          const deleted = await deleteFromKV(`patch:${id}`);
+          if (deleted) {
+            console.log(`Deleted patch ${id} from KV despite gear deletion errors`);
+          }
+          return deleted;
+        } catch (kvError) {
+          console.error(`Failed to delete patch ${id} from KV:`, kvError);
+          return false;
+        }
       }
-      
-      return deleted;
     }
   }
 

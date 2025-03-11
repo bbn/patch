@@ -97,6 +97,7 @@ export async function DELETE(
     const resolvedParams = await params;
     const patchId = resolvedParams.patchId;
     
+    // This will trigger cascade deletion of associated gears
     const success = await Patch.deleteById(patchId);
     
     if (!success) {
@@ -106,7 +107,10 @@ export async function DELETE(
       );
     }
     
-    return Response.json({ success: true });
+    return Response.json({ 
+      success: true,
+      message: "Patch and all associated gears deleted successfully" 
+    });
   } catch (error) {
     console.error(`Error deleting patch:`, error);
     return Response.json(
