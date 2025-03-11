@@ -150,7 +150,6 @@ export default function PatchPage() {
           
           // Set state from patch data
           setPatchName(patchData.name);
-          setPatchDescription(patchData.description || "");
           
           // Ensure all nodes use the gearNode type and have isProcessing property
           const updatedNodes = patchData.nodes.map((node: PatchNode) => ({
@@ -283,9 +282,6 @@ export default function PatchPage() {
   const nodeTypes = {
     gearNode: GearNode
   };
-
-  // For managing patch description
-  const [patchDescription, setPatchDescription] = useState<string>("");
 
   const addGearNode = useCallback(async (position = { x: Math.random() * 300, y: Math.random() * 300 }) => {
     try {
@@ -1230,7 +1226,7 @@ export default function PatchPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: patchName,
-              description: patchDescription,
+              description: "",
               nodes,
               edges,
             })
@@ -1249,7 +1245,7 @@ export default function PatchPage() {
             const updatedPatch = {
               id: patchId,
               name: patchName,
-              description: patchDescription,
+              description: "",
               updatedAt: Date.now(),
               nodeCount: nodes.length,
               nodes,
@@ -1287,7 +1283,7 @@ export default function PatchPage() {
       };
     }
   // Removing saveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchDescription, patchId, dataModified]);
+  }, [nodes, edges, patchName, patchId, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -1370,7 +1366,7 @@ export default function PatchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: patchName,
-          description: patchDescription,
+          description: "",
           nodes,
           edges,
         })
@@ -1389,7 +1385,7 @@ export default function PatchPage() {
         const updatedPatch = {
           id: patchId,
           name: patchName,
-          description: patchDescription,
+          description: "",
           updatedAt: Date.now(),
           nodeCount: nodes.length,
           nodes,
@@ -1413,43 +1409,37 @@ export default function PatchPage() {
       setSaving(false);
     }
   // Removing saveTimeout and setSaveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchDescription, patchId]);
+  }, [nodes, edges, patchName, patchId]);
 
   return (
-    <div className="container mx-auto p-4 flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Breadcrumb-style header with patch name and description */}
-      <div className="mb-2">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span className="text-gray-800 font-medium">patch.land</span>
-          <span className="text-gray-500">›</span>
-          {isEditingName ? (
-            <Input
-              ref={nameInputRef}
-              value={patchName}
-              onChange={(e) => setPatchName(e.target.value)}
-              onBlur={savePatchName}
-              onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
-              className="font-semibold text-xl max-w-xs"
-              autoFocus
-            />
-          ) : (
-            <h1 
-              onClick={startEditingName} 
-              className="text-xl font-semibold cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-            >
-              {patchName}
-            </h1>
-          )}
-        </div>
-        <p className="text-gray-500 text-sm ml-6 mt-1">{patchDescription || "No description"}</p>
-      </div>
-      
-      <div className="flex flex-1 h-[calc(100%-2rem)]">
-        <div className="flex-1 pr-4">
-          <Card className="h-full">
-            <CardContent className="h-full pt-6">
-              <div className="h-full w-full">
-                <ReactFlow
+    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
+      <div className="flex-1 pr-4">
+        <Card className="h-full">
+          <CardHeader className="flex flex-row items-center justify-between">
+            {isEditingName ? (
+              <div className="w-full max-w-xs">
+                <Input
+                  ref={nameInputRef}
+                  value={patchName}
+                  onChange={(e) => setPatchName(e.target.value)}
+                  onBlur={savePatchName}
+                  onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
+                  className="font-semibold text-xl"
+                  autoFocus
+                />
+              </div>
+            ) : (
+              <CardTitle 
+                onClick={startEditingName}
+                className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              >
+                {patchName}
+              </CardTitle>
+            )}
+          </CardHeader>
+          <CardContent className="h-[calc(100%-5rem)]">
+            <div className="h-full w-full">
+              <ReactFlow
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
