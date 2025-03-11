@@ -49,6 +49,12 @@ export class Patch {
 
   static async create(data: Partial<PatchData> & { id: string; name: string }): Promise<Patch> {
     const patch = new Patch(data);
+    
+    // If there are nodes in the patch, generate a description
+    if (data.nodes && data.nodes.length > 0) {
+      await patch.generateDescription();
+    }
+    
     await patch.save();
     return patch;
   }
@@ -266,6 +272,39 @@ export class Patch {
     }
   }
   
+  /**
+   * Generate descriptions for all patches in the system
+   * This is useful when introducing the description feature to ensure all patches have descriptions.
+   */
+  static async generateAllDescriptions(): Promise<number> {
+    console.log("Generating descriptions for all patches...");
+    
+    // Load all patches
+    const patches = await Patch.findAll();
+    console.log(`Found ${patches.length} patches to process`);
+    
+    let successCount = 0;
+    
+    // Process each patch
+    for (const patch of patches) {
+      if (patch.nodes.length > 0) {
+        try {
+          console.log(`Generating description for patch ${patch.id}: ${patch.name}`);
+          await patch.generateDescription();
+          await patch.save();
+          successCount++;
+        } catch (error) {
+          console.error(`Error generating description for patch ${patch.id}:`, error);
+        }
+      } else {
+        console.log(`Skipping patch ${patch.id} with no nodes`);
+      }
+    }
+    
+    console.log(`Successfully updated descriptions for ${successCount} patches`);
+    return successCount;
+  }
+  
   // Get all patches from the store
   static async findAll(): Promise<Patch[]> {
     if (typeof window !== 'undefined') {
@@ -445,6 +484,10 @@ export class Patch {
   // Node management
   async addNode(node: PatchNode): Promise<void> {
     this.data.nodes.push(node);
+    
+    // Generate a new description when node is added, as functionality might change
+    await this.generateDescription();
+    
     await this.save();
   }
 
@@ -452,10 +495,19 @@ export class Patch {
     const nodeIndex = this.data.nodes.findIndex(node => node.id === id);
     if (nodeIndex === -1) return false;
     
+    // Check if the gearId is changing - this would change functionality
+    const isChangingGear = updates.data?.gearId && 
+      updates.data.gearId !== this.data.nodes[nodeIndex].data.gearId;
+    
     this.data.nodes[nodeIndex] = {
       ...this.data.nodes[nodeIndex],
       ...updates,
     };
+    
+    // If changing the gear, update the description
+    if (isChangingGear) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return true;
@@ -469,6 +521,11 @@ export class Patch {
     this.data.edges = this.data.edges.filter(
       edge => edge.source !== id && edge.target !== id
     );
+    
+    // Generate a new description when nodes are removed, as functionality might change
+    if (this.data.nodes.length < initialLength) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return this.data.nodes.length < initialLength;
@@ -499,6 +556,9 @@ export class Patch {
       console.error("Error updating gear connections:", error);
     }
     
+    // Generate a new description when an edge is added, as connections change the functionality
+    await this.generateDescription();
+    
     await this.save();
   }
 
@@ -511,7 +571,11 @@ export class Patch {
     const newSourceId = updates.source || oldEdge.source;
     const newTargetId = updates.target || oldEdge.target;
     
+    // Track if connections changed to know if we need a new description
+    let connectionsChanged = false;
+    
     if (oldEdge.source !== newSourceId || oldEdge.target !== newTargetId) {
+      connectionsChanged = true;
       try {
         // Remove old connection
         const oldSourceNode = this.data.nodes.find(node => node.id === oldEdge.source);
@@ -550,6 +614,11 @@ export class Patch {
       ...updates,
     };
     
+    // Update description if connections changed
+    if (connectionsChanged) {
+      await this.generateDescription();
+    }
+    
     await this.save();
     return true;
   }
@@ -576,6 +645,11 @@ export class Patch {
     
     const initialLength = this.data.edges.length;
     this.data.edges = this.data.edges.filter(edge => edge.id !== id);
+    
+    // Generate a new description when an edge is removed, as it changes the functionality
+    if (this.data.edges.length < initialLength) {
+      await this.generateDescription();
+    }
     
     await this.save();
     return this.data.edges.length < initialLength;
@@ -639,6 +713,55 @@ export class Patch {
     }
     
     this.data.edges = reactFlowData.edges;
+    
+    // Generate a description since the patch's functionality has changed
+    await this.generateDescription();
+    
     await this.save();
+  }
+  
+  /**
+   * Generates a description for the patch based on its contents.
+   * When a patch's functionality changes, this will update the description.
+   * 
+   * Use static method Patch.generateAllDescriptions() to update descriptions for all patches.
+   */
+  async generateDescription(): Promise<string> {
+    try {
+      console.log(`Generating description for patch ${this.id}`);
+      
+      // Always make the API call if client-side
+      if (typeof window !== 'undefined') {
+        console.log(`Calling description API for patch ${this.id}`);
+        // Use the dedicated endpoint for patch descriptions
+        const response = await fetch(`/api/patches/${this.id}/description`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        
+        if (!response.ok) {
+          console.error(`Error generating description: ${response.status}`);
+          return this.description; // Keep existing description if API fails
+        }
+        
+        // Get the description from the response
+        const description = await response.text();
+        
+        // Clean up the description and limit its length
+        const cleanedDescription = description
+          .replace(/[\r\n"]+/g, '') // Remove newlines and quotes
+          .trim()
+          .substring(0, 120); // Enforce character limit
+        
+        console.log(`Generated description: "${cleanedDescription}"`);
+        this.data.description = cleanedDescription;
+        return cleanedDescription;
+      }
+      
+      return this.description; // Return existing description if server-side
+    } catch (error) {
+      console.error("Error generating patch description:", error);
+      return this.description;
+    }
   }
 }

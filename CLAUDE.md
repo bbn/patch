@@ -32,3 +32,6 @@
 ## Linting
 - ESLint with Next.js recommended rules
 - TypeScript ESLint plugin with unused vars as warnings
+
+## Git Workflow
+- Do not include Claude branding in commit messages, pull requests, or pull request reviews

@@ -59,6 +59,7 @@ export default function PatchPage() {
   const patchId = params.patchId as string;
   
   const [patchName, setPatchName] = useState<string>("");
+  const [patchDescription, setPatchDescription] = useState<string>("");
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export default function PatchPage() {
   const [exampleInputs, setExampleInputs] = useState<any[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [saving, setSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [processingGears, setProcessingGears] = useState<Set<string>>(new Set());
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [dataModified, setDataModified] = useState(false);
@@ -138,6 +140,7 @@ export default function PatchPage() {
   // Load patch data from API instead of direct KV access
   useEffect(() => {
     async function loadPatch() {
+      setIsLoading(true);
       try {
         // Reset modification flag when loading a new patch
         setDataModified(false);
@@ -150,6 +153,7 @@ export default function PatchPage() {
           
           // Set state from patch data
           setPatchName(patchData.name);
+          setPatchDescription(patchData.description || "");
           
           // Ensure all nodes use the gearNode type and have isProcessing property
           const updatedNodes = patchData.nodes.map((node: PatchNode) => ({
@@ -190,8 +194,10 @@ export default function PatchPage() {
                   if (newPatchResponse.ok) {
                     const newPatchData = await newPatchResponse.json();
                     setPatchName(newPatchData.name);
+                    setPatchDescription(newPatchData.description || "");
                     setNodes(newPatchData.nodes);
                     setEdges(newPatchData.edges);
+                    setIsLoading(false);
                     return;
                   }
                 }
@@ -205,6 +211,8 @@ export default function PatchPage() {
       } catch (error) {
         console.error("Error loading patch:", error);
         setPatchName(`Patch ${patchId}`);
+      } finally {
+        setIsLoading(false);
       }
     }
     
@@ -1220,13 +1228,12 @@ export default function PatchPage() {
         try {
           setSaving(true);
           
-          // Save via API
-          const response = await fetch(`/api/patches/${patchId}`, {
+          // Save via API with regenerate_description=true to update description when content changes
+          const response = await fetch(`/api/patches/${patchId}?regenerate_description=true`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: patchName,
-              description: "",
               nodes,
               edges,
             })
@@ -1234,6 +1241,18 @@ export default function PatchPage() {
           
           if (!response.ok) {
             throw new Error(`Failed to save patch: ${response.status}`);
+          }
+          
+          // Update description from the response
+          let updatedDescription = patchDescription;
+          try {
+            const updatedPatch = await response.json();
+            if (updatedPatch.description !== undefined) {
+              updatedDescription = updatedPatch.description;
+              setPatchDescription(updatedDescription);
+            }
+          } catch (error) {
+            console.error("Error parsing save response:", error);
           }
           
           // Also update localStorage for backward compatibility
@@ -1245,7 +1264,7 @@ export default function PatchPage() {
             const updatedPatch = {
               id: patchId,
               name: patchName,
-              description: "",
+              description: updatedDescription, // Use the updated description
               updatedAt: Date.now(),
               nodeCount: nodes.length,
               nodes,
@@ -1283,7 +1302,7 @@ export default function PatchPage() {
       };
     }
   // Removing saveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchId, dataModified]);
+  }, [nodes, edges, patchName, patchDescription, patchId, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -1360,13 +1379,12 @@ export default function PatchPage() {
     try {
       setSaving(true);
       
-      // Save via API
-      const response = await fetch(`/api/patches/${patchId}`, {
+      // Save via API with regenerate_description=true to ensure descriptions are updated
+      const response = await fetch(`/api/patches/${patchId}?regenerate_description=true`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: patchName,
-          description: "",
           nodes,
           edges,
         })
@@ -1374,6 +1392,18 @@ export default function PatchPage() {
       
       if (!response.ok) {
         throw new Error(`Failed to save patch: ${response.status}`);
+      }
+      
+      // Update description from the response
+      let updatedDescription = patchDescription;
+      try {
+        const updatedPatch = await response.json();
+        if (updatedPatch.description !== undefined) {
+          updatedDescription = updatedPatch.description;
+          setPatchDescription(updatedDescription);
+        }
+      } catch (error) {
+        console.error("Error parsing save response:", error);
       }
       
       // Also update localStorage for backward compatibility
@@ -1385,7 +1415,7 @@ export default function PatchPage() {
         const updatedPatch = {
           id: patchId,
           name: patchName,
-          description: "",
+          description: updatedDescription, // Use the updated description
           updatedAt: Date.now(),
           nodeCount: nodes.length,
           nodes,
@@ -1409,33 +1439,40 @@ export default function PatchPage() {
       setSaving(false);
     }
   // Removing saveTimeout and setSaveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchId]);
+  }, [nodes, edges, patchName, patchDescription, patchId]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
       <div className="flex-1 pr-4">
         <Card className="h-full">
           <CardHeader className="flex flex-row items-center justify-between">
-            {isEditingName ? (
-              <div className="w-full max-w-xs">
-                <Input
-                  ref={nameInputRef}
-                  value={patchName}
-                  onChange={(e) => setPatchName(e.target.value)}
-                  onBlur={savePatchName}
-                  onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
-                  className="font-semibold text-xl"
-                  autoFocus
-                />
-              </div>
-            ) : (
-              <CardTitle 
-                onClick={startEditingName}
-                className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-              >
-                {patchName}
-              </CardTitle>
-            )}
+            <div>
+              {isEditingName ? (
+                <div className="w-full max-w-xs">
+                  <Input
+                    ref={nameInputRef}
+                    value={patchName}
+                    onChange={(e) => setPatchName(e.target.value)}
+                    onBlur={savePatchName}
+                    onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
+                    className="font-semibold text-xl"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <CardTitle 
+                  onClick={startEditingName}
+                  className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+                >
+                  {patchName}
+                </CardTitle>
+              )}
+              {!isLoading && (
+                <div className="text-gray-500 text-sm mt-1 px-2">
+                  {patchDescription || "No description"}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
             <div className="h-full w-full">

@@ -48,12 +48,16 @@ export default function PatchesPage() {
         }
       }
       
-      // Then try to load from the server model
+      // Then try to load from the server model - ALWAYS get fresh data
       try {
-        // Bypass localStorage cache by directly fetching from API
-        const response = await fetch('/api/patches', { 
+        // Bypass all caching by using a timestamp parameter
+        const timestamp = Date.now();
+        const response = await fetch(`/api/patches?t=${timestamp}`, { 
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' }
+          headers: { 
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
         });
         
         if (response.ok) {
@@ -61,7 +65,7 @@ export default function PatchesPage() {
           
           // Log details for debugging
           freshPatches.forEach((patch: PatchSummary) => {
-            console.log(`API: Patch ${patch.id} - ${patch.name} has ${patch.nodeCount} nodes`);
+            console.log(`API: Patch ${patch.id} - ${patch.name} has ${patch.nodeCount} nodes, description: "${patch.description}"`);
           });
           
           // Sort patches by updatedAt in reverse chronological order
@@ -75,11 +79,29 @@ export default function PatchesPage() {
           return;
         }
         
-        // If API fails, fallback to direct model access
+        // If API fails, fallback to direct model access with fresh data from KV
         const allPatches = await Patch.findAll();
         if (allPatches.length > 0) {
-          patchList = allPatches.map(patch => {
-            console.log(`Model: Patch ${patch.id} - ${patch.name} has ${patch.nodes.length} nodes:`, patch.nodes);
+          // For each patch, ensure we have fresh data with an individual lookup
+          const freshPatchPromises = allPatches.map(async patch => {
+            try {
+              // Force a fresh lookup from KV storage for each patch
+              const freshPatch = await Patch.findById(patch.id);
+              if (freshPatch) {
+                console.log(`Model: Patch ${patch.id} - ${freshPatch.name} has ${freshPatch.nodes.length} nodes, description: "${freshPatch.description}"`);
+                return {
+                  id: freshPatch.id,
+                  name: freshPatch.name,
+                  description: freshPatch.description,
+                  updatedAt: freshPatch.updatedAt,
+                  nodeCount: freshPatch.nodes.length || 0
+                };
+              }
+            } catch (err) {
+              console.error(`Error getting fresh data for patch ${patch.id}:`, err);
+            }
+            
+            // Fallback to the original patch data if fresh lookup fails
             return {
               id: patch.id,
               name: patch.name,
@@ -88,6 +110,9 @@ export default function PatchesPage() {
               nodeCount: patch.nodes.length || 0
             };
           });
+          
+          // Wait for all fresh patch data
+          patchList = await Promise.all(freshPatchPromises);
           
           // Sort patches by updatedAt in reverse chronological order
           const sortedPatches = [...patchList].sort((a, b) => b.updatedAt - a.updatedAt);

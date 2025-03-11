@@ -3,6 +3,18 @@ import { Patch } from "@/lib/models/Patch";
 
 export async function GET(request: NextRequest) {
   try {
+    // Check for regenerate_all_descriptions query parameter
+    const regenerateAllDescriptions = request.nextUrl.searchParams.get('regenerate_all_descriptions') === 'true';
+    
+    if (regenerateAllDescriptions) {
+      console.log("Regenerating descriptions for all patches...");
+      const count = await Patch.generateAllDescriptions();
+      return NextResponse.json({ 
+        success: true,
+        message: `Generated descriptions for ${count} patches` 
+      });
+    }
+    
     const patches = await Patch.findAll();
     
     // Get individual patch details to ensure latest node counts
@@ -72,6 +84,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       id: patch.id,
       name: patch.name,
+      description: patch.description,
       nodeCount: patch.nodes.length
     }, { status: 201 });
   } catch (error) {
