@@ -9,6 +9,13 @@ This application requires a Vercel KV instance for data persistence. You'll need
 1. Create a Vercel KV instance: [Vercel KV Documentation](https://vercel.com/docs/storage/vercel-kv)
 2. Copy the `.env.example` file to `.env.local` and fill in your Vercel KV credentials
 
+### Environment Variables
+
+The following environment variables can be set in your `.env.local` file:
+
+- `DEBUG_LOGGING` - Set to `true` to enable verbose debug logging (default: `false`)
+- `NEXT_PUBLIC_APP_URL` - Base URL for the application (used for API calls in Edge Runtime)
+
 ### Development Server
 
 First, run the development server:

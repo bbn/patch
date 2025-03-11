@@ -27,7 +27,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
-import { Gear } from "@/lib/models/Gear";
+import { Gear, GearLogEntry } from "@/lib/models/Gear";
 
 // Custom node component for gears
 const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnectable: boolean }) => {
@@ -63,6 +63,7 @@ export default function PatchPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
+  const [logEntries, setLogEntries] = useState<GearLogEntry[]>([]);
   // Define a type for our node data
   type NodeData = {
     gearId: string;
@@ -451,6 +452,7 @@ export default function PatchPage() {
         console.log(`Gear ${gearId} found locally`);
         setGearMessages(gear.messages);
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
         
         // If we also have server data, make sure they're in sync
         if (serverGear) {
@@ -461,6 +463,11 @@ export default function PatchPage() {
             await gear.save();
             setGearMessages(gear.messages);
           }
+          
+          // Get log entries from server if available
+          if (serverGear.log) {
+            setLogEntries(serverGear.log);
+          }
         }
       } else if (serverGear) {
         // No local gear but we have server data
@@ -469,11 +476,13 @@ export default function PatchPage() {
           id: gearId as string,
           messages: serverGear.messages || [],
           exampleInputs: serverGear.exampleInputs || [],
-          outputUrls: serverGear.outputUrls || []
+          outputUrls: serverGear.outputUrls || [],
+          log: serverGear.log || []
         });
         
         setGearMessages(gear.messages);
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       } else {
         // No gear found anywhere
         console.log(`No gear ${gearId} found anywhere, creating new`);
@@ -489,11 +498,13 @@ export default function PatchPage() {
         
         setGearMessages(gear.messages);
         setExampleInputs([]);
+        setLogEntries([]);
       }
     } catch (error) {
       console.error(`Error loading gear ${gearId}:`, error);
       setGearMessages([]);
       setExampleInputs([]);
+      setLogEntries([]);
     }
   }, []);
   
@@ -591,6 +602,7 @@ export default function PatchPage() {
         // After adding a message, the gear will automatically process all examples,
         // so we need to update our local state with the updated examples
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
         
         // If the message was from the assistant, a label may have been generated
         // Update the node's label from the gear
@@ -723,6 +735,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error adding example input:", error);
@@ -800,6 +813,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error updating example input:", error);
@@ -888,6 +902,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error processing example input:", error);
@@ -955,6 +970,7 @@ export default function PatchPage() {
         
         // Update local state
         setExampleInputs(gear.exampleInputs);
+        setLogEntries(gear.log || []);
       }
     } catch (error) {
       console.error("Error processing all example inputs:", error);
@@ -981,6 +997,141 @@ export default function PatchPage() {
           return n;
         })
       );
+    }
+  };
+  
+  // Handle sending an example output to connected gears
+  const handleSendOutput = async (exampleId: string, output: any) => {
+    if (!selectedNode) return;
+    
+    const node = nodes.find(n => n.id === selectedNode);
+    if (!node?.data?.gearId) return;
+    
+    const gearId = node.data.gearId;
+    
+    try {
+      // Set processing state for this gear
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.add(gearId);
+        return newSet;
+      });
+      
+      // Update the node to show processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: true
+              }
+            };
+          }
+          return n;
+        })
+      );
+      
+      // Get the gear to access its outputUrls
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        // Call the API directly without the no_forward parameter
+        // This allows forwarding to connected gears
+        console.log(`Processing and forwarding example output from ${gear.label} (${gear.id})`);
+        
+        // For the "Send Output" button case:
+        // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
+        // So we use create_log=false for this gear, but the receiving gears should create logs
+        await fetch(`/api/gears/${gear.id}?create_log=false`, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: output,
+            source: 'example'
+          })
+        });
+        
+        console.log(`DEBUG - Send Output: Called API on server for gear ${gear.id} with example output`);
+        
+        console.log(`Sent output from example ${exampleId} to ${gear.outputUrls.length} connected gears`);
+      } else {
+        console.error(`Could not find gear ${gearId}`);
+      }
+    } catch (error) {
+      console.error("Error sending example output:", error);
+    } finally {
+      // Clear processing state
+      setProcessingGears(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(gearId);
+        return newSet;
+      });
+      
+      // Update the node to remove processing animation
+      setNodes(nodes => 
+        nodes.map(n => {
+          if (n.data.gearId === gearId) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isProcessing: false
+              }
+            };
+          }
+          return n;
+        })
+      );
+    }
+  };
+
+  // Handle clearing the log for the selected gear
+  const handleClearLog = async () => {
+    if (!selectedNode) return;
+    
+    const node = nodes.find(n => n.id === selectedNode);
+    if (!node?.data?.gearId) return;
+    
+    const gearId = node.data.gearId;
+    
+    try {
+      console.log(`Clearing log for gear ${gearId}`);
+      
+      // First clear the logs via the Gear model
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        await gear.clearLog();
+        
+        // Update local log entries state immediately for UI feedback
+        setLogEntries([]);
+        
+        // Then make a direct API request to ensure the server state is updated
+        const response = await fetch(`/api/gears/${gearId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            log: []
+          }),
+        });
+        
+        if (!response.ok) {
+          console.error(`Failed to clear log via direct API call: ${response.status}`);
+        } else {
+          console.log(`Successfully cleared log via direct API call`);
+        }
+        
+        // Re-fetch the gear to verify logs are cleared
+        const refreshResponse = await fetch(`/api/gears/${gearId}`);
+        if (refreshResponse.ok) {
+          const refreshedGear = await refreshResponse.json();
+          console.log(`Refreshed gear log length: ${refreshedGear.log?.length || 0}`);
+          // Update our local state with the refreshed gear data
+          setLogEntries(refreshedGear.log || []);
+        }
+      }
+    } catch (error) {
+      console.error("Error clearing gear log:", error);
     }
   };
 
@@ -1353,11 +1504,14 @@ export default function PatchPage() {
               initialMessages={gearMessages}
               onMessageSent={handleMessageSent}
               exampleInputs={exampleInputs}
+              logEntries={logEntries}
               onAddExample={handleAddExample}
               onUpdateExample={handleUpdateExample}
               onDeleteExample={handleDeleteExample}
               onProcessExample={handleProcessExample}
               onProcessAllExamples={handleProcessAllExamples}
+              onSendOutput={handleSendOutput}
+              onClearLog={handleClearLog}
             />
           </div>
         </div>

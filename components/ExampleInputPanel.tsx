@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,34 +19,6 @@ import {
 } from "@/components/ui/accordion";
 import { ExampleInput } from "@/lib/models/Gear";
 
-// Debounce utility function
-function useDebounce<T extends (...args: any[]) => Promise<void>>(
-  callback: T,
-  delay: number
-) {
-  const timerRef = useRef<number | null>(null);
-
-  return useCallback(
-    (...args: Parameters<T>) => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-      }
-
-      return new Promise<void>((resolve) => {
-        timerRef.current = window.setTimeout(async () => {
-          try {
-            await callback(...args);
-          } catch (err) {
-            console.error("Error in debounced callback:", err);
-          }
-          resolve();
-        }, delay);
-      });
-    },
-    [callback, delay]
-  );
-}
-
 interface ExampleInputPanelProps {
   gearId: string;
   examples: ExampleInput[];
@@ -55,6 +27,7 @@ interface ExampleInputPanelProps {
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;
   onProcessAllExamples: () => Promise<void>;
+  onSendOutput?: (id: string, output: any) => Promise<void>;
 }
 
 export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
@@ -65,11 +38,15 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   onDeleteExample,
   onProcessExample,
   onProcessAllExamples,
+  onSendOutput,
 }) => {
   const [newExampleName, setNewExampleName] = useState("");
   const [newExampleInput, setNewExampleInput] = useState("");
   const [isProcessing, setIsProcessing] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
+  const [isSending, setIsSending] = useState<Record<string, boolean>>({});
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [unsavedChanges, setUnsavedChanges] = useState<Record<string, boolean>>({});
   
   // Initialize input values from examples
   useEffect(() => {
@@ -80,16 +57,8 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
         : JSON.stringify(example.input, null, 2);
     });
     setInputValues(initialValues);
+    setUnsavedChanges({});
   }, [examples]);
-
-  // Create debounced update function
-  const debouncedUpdate = useDebounce(async (id: string, input: string) => {
-    const example = examples.find(ex => ex.id === id);
-    if (!example) return;
-    
-    await onUpdateExample(id, example.name, input);
-    await onProcessExample(id);
-  }, 750);
 
   const handleAddExample = async () => {
     if (!newExampleName.trim() || !newExampleInput.trim()) return;
@@ -102,22 +71,41 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   };
 
   const handleInputChange = (id: string, value: string) => {
-    // Update the input value immediately
+    // Update the input value immediately and mark it as unsaved
     setInputValues(prev => ({ ...prev, [id]: value }));
+    setUnsavedChanges(prev => ({ ...prev, [id]: true }));
+  };
+  
+  const handleSaveExample = async (id: string) => {
+    const example = examples.find(ex => ex.id === id);
+    if (!example) return;
     
-    // Use the debounced function to update and process
+    setIsSaving(prev => ({ ...prev, [id]: true }));
     try {
-      debouncedUpdate(id, value).catch(err => {
-        console.error("Error in debounced update:", err);
-      });
+      // First update the example
+      await onUpdateExample(id, example.name, inputValues[id]);
+      
+      // Then process it
+      await onProcessExample(id);
+      
+      // Clear the unsaved changes flag
+      setUnsavedChanges(prev => ({ ...prev, [id]: false }));
     } catch (error) {
-      console.error("Error initiating debounced update:", error);
+      console.error(`Error saving example ${id}:`, error);
+    } finally {
+      setIsSaving(prev => ({ ...prev, [id]: false }));
     }
   };
 
   const handleProcessExample = async (id: string) => {
+    // Don't process if there are unsaved changes
+    if (unsavedChanges[id]) {
+      return;
+    }
+    
     setIsProcessing(prev => ({ ...prev, [id]: true }));
     try {
+      // Process the example but don't forward to connected gears
       await onProcessExample(id);
     } catch (error) {
       console.error(`Error processing example ${id}:`, error);
@@ -127,7 +115,14 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
   };
 
   const handleProcessAll = async () => {
-    const processingAll = examples.reduce((acc, example) => {
+    // Filter out examples with unsaved changes
+    const examplesWithoutChanges = examples.filter(example => !unsavedChanges[example.id]);
+    
+    if (examplesWithoutChanges.length === 0) {
+      return;
+    }
+    
+    const processingAll = examplesWithoutChanges.reduce((acc, example) => {
       acc[example.id] = true;
       return acc;
     }, {} as Record<string, boolean>);
@@ -154,63 +149,100 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
     }
     return JSON.stringify(output, null, 2);
   };
+  
+  const handleSendOutput = async (id: string, output: any) => {
+    if (!onSendOutput || !output) return;
+    
+    setIsSending(prev => ({ ...prev, [id]: true }));
+    try {
+      await onSendOutput(id, output);
+    } catch (error) {
+      console.error(`Error sending example output ${id}:`, error);
+    } finally {
+      setIsSending(prev => ({ ...prev, [id]: false }));
+    }
+  };
 
   return (
-    <div className="w-full h-full overflow-y-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium">Example Inputs</h3>
+    <div className="w-full h-full overflow-y-auto text-xs">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="text-sm font-medium">Example Inputs</h3>
         <Button 
           size="sm" 
           onClick={handleProcessAll}
-          disabled={examples.length === 0 || Object.values(isProcessing).some(v => v)}
+          disabled={
+            examples.length === 0 || 
+            Object.values(isProcessing).some(v => v) ||
+            Object.values(isSaving).some(v => v) ||
+            examples.some(ex => unsavedChanges[ex.id])
+          }
+          className="text-xs py-1 px-2 h-auto"
         >
-          Process All
+          {Object.values(isProcessing).some(v => v) ? (
+            <>
+              <span className="inline-block animate-spin mr-1">⟳</span>
+              Processing...
+            </>
+          ) : "Process All"}
         </Button>
       </div>
       {/* Add new example form */}
-      <div className="space-y-4 mb-6 pb-6 border-b">
+      <div className="space-y-2 mb-3 pb-3 border-b">
         <Input
           placeholder="Example name"
           value={newExampleName}
           onChange={(e) => setNewExampleName(e.target.value)}
+          className="text-xs h-7"
         />
         <Textarea
           placeholder="Input data (text or JSON)"
           value={newExampleInput}
           onChange={(e) => setNewExampleInput(e.target.value)}
-          rows={3}
+          rows={2}
+          className="text-xs"
         />
-        <Button onClick={handleAddExample} disabled={!newExampleName.trim() || !newExampleInput.trim()}>
+        <Button 
+          onClick={handleAddExample} 
+          disabled={!newExampleName.trim() || !newExampleInput.trim()}
+          className="text-xs py-1 px-2 h-7"
+        >
           Add Example
         </Button>
       </div>
 
       {/* Example list */}
       {examples.length === 0 ? (
-        <div className="text-center text-gray-500 my-4">
+        <div className="text-center text-gray-500 my-2 text-xs">
           No examples added yet
         </div>
       ) : (
-        <Accordion type="multiple" className="space-y-4">
+        <Accordion type="multiple" className="space-y-2">
           {examples.map((example) => (
-            <AccordionItem key={example.id} value={example.id} className="border rounded-lg p-2">
+            <AccordionItem key={example.id} value={example.id} className="border rounded-lg p-1">
               <div className="flex justify-between items-center">
-                <AccordionTrigger className="hover:no-underline">
+                <AccordionTrigger className="hover:no-underline text-xs py-1">
                   {example.name}
                 </AccordionTrigger>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Button 
-                    size="sm" 
-                    onClick={() => handleProcessExample(example.id)}
-                    disabled={isProcessing[example.id]}
-                  >
-                    {isProcessing[example.id] ? "Processing..." : "Process"}
-                  </Button>
+                  size="sm" 
+                  onClick={() => handleSaveExample(example.id)}
+                  disabled={!unsavedChanges[example.id] || isSaving[example.id] || isProcessing[example.id]}
+                  className="text-xs py-0 px-2 h-6"
+                >
+                  {isSaving[example.id] ? (
+                    <>
+                      <span className="inline-block animate-spin mr-1">⟳</span>
+                      Saving...
+                    </>
+                  ) : "Save"}
+                </Button>
                   <Button 
                     size="sm" 
                     variant="destructive" 
                     onClick={() => onDeleteExample(example.id)}
-                    disabled={isProcessing[example.id]}
+                    disabled={isProcessing[example.id] || isSaving[example.id]}
+                    className="text-xs py-0 px-2 h-6"
                   >
                     Delete
                   </Button>
@@ -218,26 +250,41 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
               </div>
               
               <AccordionContent>
-                <div className="space-y-4 mt-4">
+                <div className="space-y-2 mt-2">
                   <div>
-                    <h4 className="font-medium mb-2">Input:</h4>
+                    <h4 className="font-medium mb-1 text-xs">Input:</h4>
                     <Textarea
                       placeholder="Input data (text or JSON)"
                       value={inputValues[example.id] || ''}
                       onChange={(e) => handleInputChange(example.id, e.target.value)}
-                      rows={3}
-                      className="font-mono text-sm"
+                      rows={2}
+                      className="font-mono text-xs"
                     />
                   </div>
                   
                   {example.output && (
                     <div>
-                      <h4 className="font-medium mb-2">
+                      <h4 className="font-medium mb-1 text-xs">
                         Output <span className="text-xs text-gray-500">(Last processed: {formatDateTime(example.lastProcessed)})</span>:
                       </h4>
-                      <pre className="bg-gray-100 p-3 rounded-md overflow-x-auto text-sm">
+                      <pre className="bg-gray-100 p-2 rounded-md overflow-x-auto text-xs">
                         {formatOutput(example.output)}
                       </pre>
+                      {onSendOutput && (
+                        <Button 
+                          size="sm"
+                          className="w-full mt-2 text-xs h-7"
+                          onClick={() => handleSendOutput(example.id, example.output)}
+                          disabled={isSending[example.id] || !example.output}
+                        >
+                          {isSending[example.id] ? (
+                            <>
+                              <span className="inline-block animate-spin mr-1">⟳</span>
+                              Sending...
+                            </>
+                          ) : "Send Output"}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

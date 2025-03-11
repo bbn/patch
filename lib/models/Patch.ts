@@ -387,8 +387,13 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
-          const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
-          await sourceGear.addOutputUrl(targetGearUrl);
+          // Use a standardized URL format for consistency
+          const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
+          
+          // Check if this connection already exists to avoid duplicates
+          if (!sourceGear.outputUrls.includes(targetGearUrl)) {
+            await sourceGear.addOutputUrl(targetGearUrl);
+          }
         }
       }
     } catch (error) {
@@ -416,7 +421,7 @@ export class Patch {
         if (oldSourceNode && oldTargetNode) {
           const oldSourceGear = await Gear.findById(oldSourceNode.data.gearId);
           if (oldSourceGear) {
-            const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}/process`;
+            const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}`;
             await oldSourceGear.removeOutputUrl(oldTargetUrl);
           }
         }
@@ -428,8 +433,12 @@ export class Patch {
         if (newSourceNode && newTargetNode) {
           const newSourceGear = await Gear.findById(newSourceNode.data.gearId);
           if (newSourceGear) {
-            const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}/process`;
-            await newSourceGear.addOutputUrl(newTargetUrl);
+            const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}`;
+            
+            // Check if this connection already exists to avoid duplicates
+            if (!newSourceGear.outputUrls.includes(newTargetUrl)) {
+              await newSourceGear.addOutputUrl(newTargetUrl);
+            }
           }
         }
       } catch (error) {
@@ -458,7 +467,7 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
-          const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+          const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
           await sourceGear.removeOutputUrl(targetGearUrl);
         }
       }
@@ -500,7 +509,7 @@ export class Patch {
           if (sourceNode && targetNode) {
             const sourceGear = await Gear.findById(sourceNode.data.gearId);
             if (sourceGear) {
-              const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+              const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
               await sourceGear.removeOutputUrl(targetGearUrl);
             }
           }
@@ -520,7 +529,7 @@ export class Patch {
           if (sourceNode && targetNode) {
             const sourceGear = await Gear.findById(sourceNode.data.gearId);
             if (sourceGear) {
-              const targetGearUrl = `/api/gears/${targetNode.data.gearId}/process`;
+              const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
               await sourceGear.addOutputUrl(targetGearUrl);
             }
           }
