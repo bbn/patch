@@ -1229,7 +1229,7 @@ export default function PatchPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: patchName,
-              description: "",
+              description: patchDescription,
               nodes,
               edges,
             })
@@ -1248,7 +1248,7 @@ export default function PatchPage() {
             const updatedPatch = {
               id: patchId,
               name: patchName,
-              description: "",
+              description: patchDescription,
               updatedAt: Date.now(),
               nodeCount: nodes.length,
               nodes,
@@ -1286,7 +1286,7 @@ export default function PatchPage() {
       };
     }
   // Removing saveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchId, dataModified]);
+  }, [nodes, edges, patchName, patchDescription, patchId, dataModified]);
   
   // Handler for when connection interaction starts
   const onConnectStart = useCallback(() => {
@@ -1412,7 +1412,7 @@ export default function PatchPage() {
       setSaving(false);
     }
   // Removing saveTimeout and setSaveTimeout from dependency array to prevent infinite loops
-  }, [nodes, edges, patchName, patchId]);
+  }, [nodes, edges, patchName, patchDescription, patchId]);
 
   return (
     <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
