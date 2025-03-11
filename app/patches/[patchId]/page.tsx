@@ -59,6 +59,7 @@ export default function PatchPage() {
   const patchId = params.patchId as string;
   
   const [patchName, setPatchName] = useState<string>("");
+  const [patchDescription, setPatchDescription] = useState<string>("");
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -150,6 +151,7 @@ export default function PatchPage() {
           
           // Set state from patch data
           setPatchName(patchData.name);
+          setPatchDescription(patchData.description || "");
           
           // Ensure all nodes use the gearNode type and have isProcessing property
           const updatedNodes = patchData.nodes.map((node: PatchNode) => ({
@@ -190,6 +192,7 @@ export default function PatchPage() {
                   if (newPatchResponse.ok) {
                     const newPatchData = await newPatchResponse.json();
                     setPatchName(newPatchData.name);
+                    setPatchDescription(newPatchData.description || "");
                     setNodes(newPatchData.nodes);
                     setEdges(newPatchData.edges);
                     return;
@@ -1366,7 +1369,7 @@ export default function PatchPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: patchName,
-          description: "",
+          description: patchDescription,
           nodes,
           edges,
         })
@@ -1385,7 +1388,7 @@ export default function PatchPage() {
         const updatedPatch = {
           id: patchId,
           name: patchName,
-          description: "",
+          description: patchDescription,
           updatedAt: Date.now(),
           nodeCount: nodes.length,
           nodes,
@@ -1416,26 +1419,33 @@ export default function PatchPage() {
       <div className="flex-1 pr-4">
         <Card className="h-full">
           <CardHeader className="flex flex-row items-center justify-between">
-            {isEditingName ? (
-              <div className="w-full max-w-xs">
-                <Input
-                  ref={nameInputRef}
-                  value={patchName}
-                  onChange={(e) => setPatchName(e.target.value)}
-                  onBlur={savePatchName}
-                  onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
-                  className="font-semibold text-xl"
-                  autoFocus
-                />
-              </div>
-            ) : (
-              <CardTitle 
-                onClick={startEditingName}
-                className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-              >
-                {patchName}
-              </CardTitle>
-            )}
+            <div>
+              {isEditingName ? (
+                <div className="w-full max-w-xs">
+                  <Input
+                    ref={nameInputRef}
+                    value={patchName}
+                    onChange={(e) => setPatchName(e.target.value)}
+                    onBlur={savePatchName}
+                    onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
+                    className="font-semibold text-xl"
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <CardTitle 
+                  onClick={startEditingName}
+                  className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+                >
+                  {patchName}
+                </CardTitle>
+              )}
+              {patchDescription && (
+                <div className="text-gray-500 text-sm mt-1 px-2">
+                  {patchDescription}
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
             <div className="h-full w-full">
