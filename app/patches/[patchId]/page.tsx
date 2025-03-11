@@ -76,6 +76,7 @@ export default function PatchPage() {
   const [exampleInputs, setExampleInputs] = useState<any[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [saving, setSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [processingGears, setProcessingGears] = useState<Set<string>>(new Set());
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [dataModified, setDataModified] = useState(false);
@@ -139,6 +140,7 @@ export default function PatchPage() {
   // Load patch data from API instead of direct KV access
   useEffect(() => {
     async function loadPatch() {
+      setIsLoading(true);
       try {
         // Reset modification flag when loading a new patch
         setDataModified(false);
@@ -195,6 +197,7 @@ export default function PatchPage() {
                     setPatchDescription(newPatchData.description || "");
                     setNodes(newPatchData.nodes);
                     setEdges(newPatchData.edges);
+                    setIsLoading(false);
                     return;
                   }
                 }
@@ -208,6 +211,8 @@ export default function PatchPage() {
       } catch (error) {
         console.error("Error loading patch:", error);
         setPatchName(`Patch ${patchId}`);
+      } finally {
+        setIsLoading(false);
       }
     }
     
@@ -1242,7 +1247,7 @@ export default function PatchPage() {
           let updatedDescription = patchDescription;
           try {
             const updatedPatch = await response.json();
-            if (updatedPatch.description) {
+            if (updatedPatch.description !== undefined) {
               updatedDescription = updatedPatch.description;
               setPatchDescription(updatedDescription);
             }
@@ -1393,7 +1398,7 @@ export default function PatchPage() {
       let updatedDescription = patchDescription;
       try {
         const updatedPatch = await response.json();
-        if (updatedPatch.description) {
+        if (updatedPatch.description !== undefined) {
           updatedDescription = updatedPatch.description;
           setPatchDescription(updatedDescription);
         }
@@ -1462,9 +1467,11 @@ export default function PatchPage() {
                   {patchName}
                 </CardTitle>
               )}
-              <div className="text-gray-500 text-sm mt-1 px-2">
-                {patchDescription || "No description"}
-              </div>
+              {!isLoading && (
+                <div className="text-gray-500 text-sm mt-1 px-2">
+                  {patchDescription || "No description"}
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
