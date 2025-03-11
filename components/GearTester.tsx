@@ -168,7 +168,7 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
                     className={`border-b last:border-b-0 p-3 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}
                   >
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <div>{entry.source || 'direct'}</div>
+                      <div>{typeof entry.source === 'object' ? entry.source.label : (entry.source || 'direct')}</div>
                       <div>{formatTimestamp(entry.timestamp)}</div>
                     </div>
                     

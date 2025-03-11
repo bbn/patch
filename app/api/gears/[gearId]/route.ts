@@ -86,18 +86,12 @@ export async function POST(
     }
 
     // Process the input
-    const output = await gear.processWithLLM(message);
+    const output = await gear.process(message);
     
-    // Store the output
-    gear.data.output = output;
+    // Output is already stored in gear.data.output by the process method
     
     // Create a log entry based on shouldCreateLog flag
     if (shouldCreateLog) {
-      if (!gear.data.log) {
-        gear.data.log = [];
-        debugLog("API", `[${gearId}] Initialized empty log array`);
-      }
-      
       // Create source object
       const sourceObj = sourceLabel 
         ? { id: source, label: sourceLabel } 
@@ -107,26 +101,34 @@ export async function POST(
       debugLog("API", `[${gearId}] Creating log entry from source ${JSON.stringify(sourceObj)}`);
       
       try {
-        // Add a single log entry
-        gear.data.log.unshift({
+        // Create a log entry for the PUT request to handle
+        const logEntry = {
           timestamp: Date.now(),
           input: message,
           output,
           source: sourceObj
+        };
+        
+        // Update the gear via PUT request to itself to add the log entry
+        const currentLog = gear.log || [];
+        const updatedLog = [logEntry, ...currentLog].slice(0, 50); // Keep only 50 entries
+        
+        // Update using the Edit method
+        await fetch(`/api/gears/${gearId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            log: updatedLog
+          }),
         });
         
-        // Limit log size to most recent 50 entries
-        if (gear.data.log.length > 50) {
-          gear.data.log = gear.data.log.slice(0, 50);
-        }
-        
-        debugLog("API", `[${gearId}] Created log entry (log count: ${gear.data.log.length})`);
+        debugLog("API", `[${gearId}] Created log entry (log count: ${updatedLog.length})`);
         
         // Only run validation in debug mode
-        if (gear.data.log.length === 0) {
+        if (updatedLog.length === 0) {
           console.error(`ERROR: Log array is still empty after adding entry!`);
         } else {
-          debugLog("API", `[${gearId}] Latest log entry timestamp: ${gear.data.log[0].timestamp}`);
+          debugLog("API", `[${gearId}] Latest log entry timestamp: ${updatedLog[0].timestamp}`);
         }
       } catch (logError) {
         console.error(`Error creating log entry:`, logError);
@@ -135,14 +137,14 @@ export async function POST(
       debugLog("API", `[${gearId}] Skipping log creation (create_log=false)`);
     }
     
-    // Save the gear with the updated output (and possibly log entry)
-    console.log(`Saving gear ${gearId} with ${gear.data.log?.length || 0} log entries`);
+    // Save the gear with the updated output
+    console.log(`Saving gear ${gearId}`);
     try {
       await gear.save();
       debugLog("API", `[${gearId}] Successfully saved gear`);
       
       // Only verify in debug mode to avoid extra database ops in production
-      if (gear.data.log && debugLog !== console.log) {
+      if (debugLog !== console.log) {
         const verifyGear = await Gear.findById(gearId);
         if (verifyGear) {
           debugLog("API", `[${gearId}] Verified saved gear has ${verifyGear.log.length} log entries`);
@@ -291,9 +293,8 @@ export async function PUT(
     
     if (updates.log !== undefined) {
       console.log(`PUT API: Updating log for gear ${gearId}`);
-      // Directly update the log array
-      gear.data.log = updates.log;
-      await gear.save();
+      // Use the new setLog method
+      await gear.setLog(updates.log);
       updated = true;
     }
     

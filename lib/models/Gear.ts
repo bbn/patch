@@ -410,6 +410,12 @@ export class Gear {
       }
     }
   }
+  
+  async setLog(logEntries: GearLogEntry[]) {
+    console.log(`Setting log for gear ${this.id} with ${logEntries.length} entries`);
+    this.data.log = logEntries;
+    await this.save();
+  }
 
   async setLabel(label: string) {
     console.log(`Setting label for gear ${this.id}: "${label}"`);
