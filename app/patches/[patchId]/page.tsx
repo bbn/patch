@@ -1223,13 +1223,12 @@ export default function PatchPage() {
         try {
           setSaving(true);
           
-          // Save via API
-          const response = await fetch(`/api/patches/${patchId}`, {
+          // Save via API with regenerate_description=true to update description when content changes
+          const response = await fetch(`/api/patches/${patchId}?regenerate_description=true`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: patchName,
-              description: patchDescription,
               nodes,
               edges,
             })
@@ -1237,6 +1236,18 @@ export default function PatchPage() {
           
           if (!response.ok) {
             throw new Error(`Failed to save patch: ${response.status}`);
+          }
+          
+          // Update description from the response
+          let updatedDescription = patchDescription;
+          try {
+            const updatedPatch = await response.json();
+            if (updatedPatch.description) {
+              updatedDescription = updatedPatch.description;
+              setPatchDescription(updatedDescription);
+            }
+          } catch (error) {
+            console.error("Error parsing save response:", error);
           }
           
           // Also update localStorage for backward compatibility
@@ -1248,7 +1259,7 @@ export default function PatchPage() {
             const updatedPatch = {
               id: patchId,
               name: patchName,
-              description: patchDescription,
+              description: updatedDescription, // Use the updated description
               updatedAt: Date.now(),
               nodeCount: nodes.length,
               nodes,
@@ -1363,13 +1374,12 @@ export default function PatchPage() {
     try {
       setSaving(true);
       
-      // Save via API
-      const response = await fetch(`/api/patches/${patchId}`, {
+      // Save via API with regenerate_description=true to ensure descriptions are updated
+      const response = await fetch(`/api/patches/${patchId}?regenerate_description=true`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: patchName,
-          description: patchDescription,
           nodes,
           edges,
         })
@@ -1377,6 +1387,18 @@ export default function PatchPage() {
       
       if (!response.ok) {
         throw new Error(`Failed to save patch: ${response.status}`);
+      }
+      
+      // Update description from the response
+      let updatedDescription = patchDescription;
+      try {
+        const updatedPatch = await response.json();
+        if (updatedPatch.description) {
+          updatedDescription = updatedPatch.description;
+          setPatchDescription(updatedDescription);
+        }
+      } catch (error) {
+        console.error("Error parsing save response:", error);
       }
       
       // Also update localStorage for backward compatibility
@@ -1388,7 +1410,7 @@ export default function PatchPage() {
         const updatedPatch = {
           id: patchId,
           name: patchName,
-          description: patchDescription,
+          description: updatedDescription, // Use the updated description
           updatedAt: Date.now(),
           nodeCount: nodes.length,
           nodes,
@@ -1440,11 +1462,9 @@ export default function PatchPage() {
                   {patchName}
                 </CardTitle>
               )}
-              {patchDescription && (
-                <div className="text-gray-500 text-sm mt-1 px-2">
-                  {patchDescription}
-                </div>
-              )}
+              <div className="text-gray-500 text-sm mt-1 px-2">
+                {patchDescription || "No description"}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="h-[calc(100%-5rem)]">
