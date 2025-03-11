@@ -129,10 +129,10 @@ export async function POST(
         const currentLog = gear.log || [];
         const updatedLog = [logEntry, ...currentLog].slice(0, 50); // Keep only 50 entries
         
-        // Update using the Edit method - use absolute URL for Edge environment
-        const baseUrl = process.env.VERCEL_URL 
-          ? `https://${process.env.VERCEL_URL}` 
-          : process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        // Extract request URL to use as base for absolute URLs in Edge runtime
+        const requestUrl = new URL(req.url);
+        const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+        debugLog("API", `[${gearId}] Using base URL derived from request: ${baseUrl}`);
           
         await fetch(`${baseUrl}/api/gears/${gearId}`, {
           method: 'PUT',
@@ -188,8 +188,12 @@ export async function POST(
       // This is not ideal but needed as a workaround for current Next.js Edge API
       (async () => {
         try {
-          debugLog("API", `[${gearId}] Starting async forwarding...`);
-          await gear.forwardOutputToGears(output);
+          // Extract hostname from request URL for forwarding
+          const requestUrl = new URL(req.url);
+          const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+          
+          debugLog("API", `[${gearId}] Starting async forwarding with base URL: ${baseUrl}`);
+          await gear.forwardOutputToGears(output, baseUrl);
           debugLog("API", `[${gearId}] Successfully completed async forwarding`);
         } catch (forwardError) {
           console.error(`Error in async forwarding:`, forwardError);

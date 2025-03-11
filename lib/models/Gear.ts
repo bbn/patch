@@ -1434,7 +1434,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
   }
 
-  async forwardOutputToGears(output: GearOutput): Promise<void> {
+  async forwardOutputToGears(output: GearOutput, serverBaseUrl?: string): Promise<void> {
     // If there are no output gears, just return early
     if (!this.outputUrls || this.outputUrls.length === 0) {
       return;
@@ -1480,12 +1480,23 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             debugLog("FORWARDING", `Client-side URL: ${fullUrl}`);
           } else {
             // In server context (edge runtime) we must use absolute URLs
-            // Check for Vercel deployment URL first, try NEXT_PUBLIC_APP_URL as fallback,
-            // and if all else fails use localhost for development
-            const baseURL = process.env.VERCEL_URL 
-              ? `https://${process.env.VERCEL_URL}` 
-              : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
-            fullUrl = `${baseURL}${fullUrl}`;
+            if (serverBaseUrl) {
+              // Use the base URL derived from the request if provided
+              fullUrl = `${serverBaseUrl}${fullUrl}`;
+              debugLog("FORWARDING", `Server-side URL using provided base: ${fullUrl}`);
+            } else {
+              // Fallback to environment variables if base URL not provided
+              const baseURL = process.env.VERCEL_URL 
+                ? `https://${process.env.VERCEL_URL}` 
+                : process.env.NEXT_PUBLIC_APP_URL;
+                
+              if (!baseURL) {
+                console.warn(`Cannot forward in Edge runtime: no base URL provided and no environment variables set`);
+                throw new Error("Cannot determine base URL for forwarding");
+              }
+              
+              fullUrl = `${baseURL}${fullUrl}`;
+            }
             debugLog("FORWARDING", `Server-side absolute URL: ${fullUrl}`);
           }
         }
