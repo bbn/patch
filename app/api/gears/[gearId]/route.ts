@@ -85,8 +85,24 @@ export async function POST(
       return new Response("Gear not found", { status: 404 });
     }
 
+    // Emit processing started event
+    try {
+      const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+      await sendGearStatusEvent(gearId, 'processing', { operation: 'process' });
+    } catch (e) {
+      console.error("Error sending gear processing event:", e);
+    }
+    
     // Process the input
     const output = await gear.process(message);
+    
+    // Emit processing completed event
+    try {
+      const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+      await sendGearStatusEvent(gearId, 'complete', { operation: 'process' });
+    } catch (e) {
+      console.error("Error sending gear completion event:", e);
+    }
     
     // Output is already stored in gear.data.output by the process method
     

@@ -1,11 +1,12 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ChatSidebar } from "@/components/ChatSidebar";
+import { GearStatusListener } from "@/components/GearStatusListener";
 import {
   ReactFlow,
   MiniMap,
@@ -87,6 +88,34 @@ export default function PatchPage() {
   
   // Track recent edge connections to prevent adding gear when connection completes
   const [recentConnection, setRecentConnection] = useState<{ timestamp: number, source: string, target: string } | null>(null);
+  
+  // Get all gear IDs from nodes for real-time status updates
+  const activeGearIds = useMemo(() => 
+    nodes
+      .filter(node => node.data?.gearId)
+      .map(node => node.data.gearId),
+    [nodes]
+  );
+  
+  // Handle real-time gear status updates from SSE
+  const handleGearStatusChange = useCallback((gearId: string, status: 'processing' | 'complete' | 'error') => {
+    console.log(`Gear ${gearId} status changed to ${status}`);
+    
+    setNodes(nodes => 
+      nodes.map(n => {
+        if (n.data?.gearId === gearId) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              isProcessing: status === 'processing'
+            }
+          };
+        }
+        return n;
+      })
+    );
+  }, []);
 
   // Handle starting patch name edit
   const startEditingName = () => {
@@ -1495,6 +1524,12 @@ export default function PatchPage() {
               >
                 <Controls />
                 <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+                
+                {/* Real-time status updates listener */}
+                <GearStatusListener 
+                  gearIds={activeGearIds} 
+                  onStatusChange={handleGearStatusChange} 
+                />
               </ReactFlow>
             </div>
           </CardContent>

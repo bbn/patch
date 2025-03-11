@@ -1163,8 +1163,33 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
   }
   
+  // New method to emit processing state events
+  async emitProcessingState(isProcessing: boolean, details?: any) {
+    // This will be called during LLM processing
+    try {
+      // Only in browser context
+      if (typeof window !== 'undefined') {
+        console.log(`Emitting processing state for gear ${this.id}: ${isProcessing}`);
+        // Nothing to do here - the client will subscribe directly
+      } else {
+        // In server context, call the SSE endpoint to broadcast event
+        try {
+          const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+          await sendGearStatusEvent(this.id, isProcessing ? 'processing' : 'complete', details);
+        } catch (e) {
+          console.error("Error importing or calling sendGearStatusEvent:", e);
+        }
+      }
+    } catch (error) {
+      console.error("Error emitting gear processing state:", error);
+    }
+  }
+
   private async processWithLLM(input?: GearInput): Promise<GearOutput> {
     try {
+      // Emit processing started
+      await this.emitProcessingState(true);
+      
       // For tests, this method should be mocked unless the actual LLM call is desired
       if (typeof window === 'undefined') {
         // In a Node.js environment (tests), we should use the Vercel AI SDK
@@ -1188,8 +1213,12 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             ]
           });
           
+          // Emit processing completed
+          await this.emitProcessingState(false);
           return response.text;
-        } catch {
+        } catch (err) {
+          // Emit error state
+          await this.emitProcessingState(false, { error: err instanceof Error ? err.message : "Unknown error" });
           // If the real API call fails or the SDK is not available, throw an error
           throw new Error("Error using AI SDK. If testing, use --mock-llms flag to mock LLM calls.");
         }
@@ -1228,6 +1257,8 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           if (!response.ok) {
             const text = await response.text();
             console.error(`API error: ${response.status} ${text}`);
+            // Emit error state
+            await this.emitProcessingState(false, { error: `Failed to process input: ${response.status} ${text}` });
             throw new Error(`Failed to process input: ${response.status} ${text}`);
           }
           
@@ -1237,17 +1268,25 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             
             try {
               const result = JSON.parse(text);
+              // Emit processing completed
+              await this.emitProcessingState(false);
               return result.output || text;
             } catch (jsonError) {
               console.warn("Failed to parse JSON response from API, using raw text:", jsonError);
+              // Emit processing completed
+              await this.emitProcessingState(false);
               return text;
             }
           } catch (textError) {
             console.error("Error reading API response text:", textError);
+            // Emit error state
+            await this.emitProcessingState(false, { error: "Error reading API response" });
             return "Error reading API response";
           }
         } catch (error) {
           console.error("Error in direct API call:", error);
+          // Emit error state
+          await this.emitProcessingState(false, { error: error instanceof Error ? error.message : "Unknown error" });
           throw error;
         }
       }
@@ -1270,6 +1309,8 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         if (!response.ok) {
           const text = await response.text();
           console.error(`LLM API error: ${response.status} ${text}`);
+          // Emit error state
+          await this.emitProcessingState(false, { error: `Failed to process with LLM: ${response.status} ${text}` });
           throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
         }
         
@@ -1286,6 +1327,8 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             const reader = response.body?.getReader();
             if (!reader) {
               console.warn("No reader available for stream");
+              // Emit error state
+              await this.emitProcessingState(false, { error: "Error reading stream" });
               return "Error reading stream";
             }
             
@@ -1330,9 +1373,13 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             }
             
             console.log("Final accumulated content:", accumulatedContent);
+            // Emit processing completed
+            await this.emitProcessingState(false);
             return accumulatedContent;
           } catch (streamError) {
             console.error("Error processing stream:", streamError);
+            // Emit error state
+            await this.emitProcessingState(false, { error: "Error processing stream response" });
             return "Error processing stream response";
           }
         } else {
@@ -1349,21 +1396,31 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
               if (!result.content && !result.text) {
                 console.warn("Received potentially empty content from LLM response");
                 // Return the raw text if we can't find content or text fields
+                // Emit processing completed
+                await this.emitProcessingState(false);
                 return text;
               }
               
+              // Emit processing completed
+              await this.emitProcessingState(false);
               return result.content || result.text;
             } catch (jsonError) {
               console.warn("Failed to parse JSON response, using raw text:", jsonError);
+              // Emit processing completed
+              await this.emitProcessingState(false);
               return text; // Use raw text if JSON parsing fails
             }
           } catch (textError) {
             console.error("Error getting response text:", textError);
+            // Emit error state
+            await this.emitProcessingState(false, { error: "Error reading response" });
             return "Error reading response";
           }
         }
       } catch (error) {
         console.error("Error in LLM API call:", error);
+        // Emit error state
+        await this.emitProcessingState(false, { error: error instanceof Error ? error.message : "Unknown error" });
         throw error;
       } finally {
         // Clean up the controller
@@ -1371,6 +1428,8 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       }
     } catch (error) {
       console.error("Error processing with LLM:", error);
+      // Emit error state if not already emitted
+      await this.emitProcessingState(false, { error: error instanceof Error ? error.message : "Unknown error" });
       throw error;
     }
   }

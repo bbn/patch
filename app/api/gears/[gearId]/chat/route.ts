@@ -24,6 +24,14 @@ export async function POST(
       return new Response("Gear not found", { status: 404 });
     }
     
+    // Emit processing started event
+    try {
+      const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+      await sendGearStatusEvent(gearId, 'processing', { operation: 'chat' });
+    } catch (e) {
+      console.error("Error sending gear processing event:", e);
+    }
+    
     console.log(`Chat API: Found gear with ${gear.messages.length} messages`);
 
     // Special requests are now deprecated - we have a separate label endpoint
@@ -80,44 +88,73 @@ export async function POST(
         size: 16,
       }),
       async onFinish({ response }) {
-        // Add the assistant response to the GearChat
-        const assistantMessage = response.messages.find(msg => msg.role === "assistant");
-        if (assistantMessage) {
-          let content = "";
-          
-          // Safely handle different types of content
-          if (typeof assistantMessage.content === 'string') {
-            content = assistantMessage.content;
-          } else if (Array.isArray(assistantMessage.content)) {
-            // For content arrays (e.g. with function calls), extract text parts
-            content = assistantMessage.content
-              .filter(part => part.type === 'text')
-              .map(part => part.text)
-              .join('');
-          } else if (assistantMessage.content && typeof assistantMessage.content === 'object') {
-            // Try to safely stringify the object
-            try {
-              content = JSON.stringify(assistantMessage.content);
-            } catch (e) {
-              console.error('Failed to stringify assistant content:', e);
-              content = "Error: Could not process assistant response";
+        try {
+          // Add the assistant response to the GearChat
+          const assistantMessage = response.messages.find(msg => msg.role === "assistant");
+          if (assistantMessage) {
+            let content = "";
+            
+            // Safely handle different types of content
+            if (typeof assistantMessage.content === 'string') {
+              content = assistantMessage.content;
+            } else if (Array.isArray(assistantMessage.content)) {
+              // For content arrays (e.g. with function calls), extract text parts
+              content = assistantMessage.content
+                .filter(part => part.type === 'text')
+                .map(part => part.text)
+                .join('');
+            } else if (assistantMessage.content && typeof assistantMessage.content === 'object') {
+              // Try to safely stringify the object
+              try {
+                content = JSON.stringify(assistantMessage.content);
+              } catch (e) {
+                console.error('Failed to stringify assistant content:', e);
+                content = "Error: Could not process assistant response";
+              }
             }
+            
+            await gearChat.addMessage({
+              role: "assistant",
+              content: content
+            });
           }
           
-          await gearChat.addMessage({
-            role: "assistant",
-            content: content
-          });
+          // Emit processing completed event
+          try {
+            const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+            await sendGearStatusEvent(gearId, 'complete', { operation: 'chat' });
+          } catch (e) {
+            console.error("Error sending gear completion event:", e);
+          }
+        } catch (error) {
+          console.error("Error in chat completion:", error);
+          // Emit error event
+          try {
+            const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+            await sendGearStatusEvent(gearId, 'error', { 
+              error: error instanceof Error ? error.message : "Unknown error in chat completion" 
+            });
+          } catch (e) {
+            console.error("Error sending gear error event:", e);
+          }
         }
-        
-        // Note: If you need to add all messages back to a storage system,
-        // you could use appendResponseMessages here
       },
     });
 
     return result.toDataStreamResponse();
   } catch (error) {
     console.error("Error in chat API:", error);
+    
+    // Emit error state
+    try {
+      const gearId = (await params).gearId;
+      const { sendGearStatusEvent } = await import('@/app/api/gears/[gearId]/status/route');
+      await sendGearStatusEvent(gearId, 'error', { 
+        error: error instanceof Error ? error.message : "Unknown error in chat API" 
+      });
+    } catch (e) {
+      console.error("Error sending gear error event:", e);
+    }
     
     // Extract the actual error message
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
