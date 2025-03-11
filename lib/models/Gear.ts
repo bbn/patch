@@ -423,12 +423,27 @@ export class Gear {
     this.data.label = label;
     await this.save();
     debugLog("LABEL", `setLabel completed, current label: "${this.data.label}"`);
+    
+    // Update the description of any patches containing this gear
+    await this.updatePatchDescriptions();
+  }
+  
+  /**
+   * Find all patches that contain this gear and update their descriptions
+   * Called after gear label changes to ensure patch descriptions reflect current functionality
+   */
+  private async updatePatchDescriptions() {
+    console.log(`Updating patch descriptions after label change for gear ${this.id}`);
+    await this.updateContainingPatchDescriptions();
   }
   
   // Setters
   async setMessages(messages: Message[]) {
     this.data.messages = messages;
     await this.save();
+    
+    // Updates to messages can change gear functionality, so update patch descriptions
+    await this.updateContainingPatchDescriptions();
   }
   
   async setOutputUrls(urls: string[]) {
@@ -744,6 +759,9 @@ export class Gear {
         const newLabel = await this.generateLabel();
         debugLog("LABEL", `generateLabel() returned: "${newLabel}"`);
         
+        // Update descriptions of patches that contain this gear
+        await this.updateContainingPatchDescriptions();
+        
         // Only run verification checks in debug mode
         if (isDebugLoggingEnabled()) {
           // Log current gear state after label generation
@@ -1014,6 +1032,49 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     } catch (error) {
       console.error("Error processing special prompt with LLM:", error);
       throw error;
+    }
+  }
+  
+  /**
+   * Updates the descriptions of all patches containing this gear.
+   * This is triggered after significant changes to this gear.
+   */
+  async updateContainingPatchDescriptions(): Promise<void> {
+    if (typeof window !== 'undefined') {
+      try {
+        // Find all patches
+        const response = await fetch('/api/patches');
+        if (!response.ok) return;
+        
+        const patches = await response.json();
+        
+        // For each patch, check if it contains this gear
+        for (const patchData of patches) {
+          try {
+            // Load the full patch data
+            const patchResponse = await fetch(`/api/patches/${patchData.id}`);
+            if (!patchResponse.ok) continue;
+            
+            const fullPatchData = await patchResponse.json();
+            
+            // Check if any nodes in this patch use this gear
+            const containsThisGear = fullPatchData.nodes?.some(
+              (node: any) => node.data?.gearId === this.id
+            );
+            
+            if (containsThisGear) {
+              console.log(`Updating description for patch ${patchData.id} due to gear changes`);
+              
+              // Trigger description regeneration via the API
+              await fetch(`/api/patches/${patchData.id}?regenerate_description=true`);
+            }
+          } catch (error) {
+            console.error(`Error checking patch ${patchData.id} for gear:`, error);
+          }
+        }
+      } catch (error) {
+        console.error("Error updating patch descriptions after gear changes:", error);
+      }
     }
   }
 
