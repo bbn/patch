@@ -1,5 +1,5 @@
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateText, streamText } from 'ai';
 import { Gear } from "@/lib/models/Gear";
 import { NextRequest } from 'next/server';
 
@@ -28,6 +28,8 @@ export async function POST(
     // Process the label generation request
     console.log("Processing label generation request");
     
+    // Since label generation doesn't require streaming, we can use generateText
+    // But we'll format the response to match what the Gear.processWithSpecialPrompt method expects
     const result = await generateText({
       model: openai('gpt-4o-mini'), // Using a smaller model for label generation is sufficient
       messages: [
@@ -38,7 +40,8 @@ export async function POST(
       ]
     });
     
-    return Response.json({ response: result.text });
+    // Return just the raw text - this is what Gear.processWithSpecialPrompt expects
+    return Response.json({ text: result.text });
   } catch (error) {
     console.error("Error in label API:", error);
     

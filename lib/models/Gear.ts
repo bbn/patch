@@ -231,6 +231,18 @@ export class Gear {
     return unsubscribe;
   }
 
+  // Flag to track if we're currently in a server-side API handler
+  // This helps prevent redundant API calls when already in an API route 
+  private inServerApiHandler = false;
+  
+  /**
+   * Mark that this instance is being used within a server API handler
+   * When true, client-side API calls will be skipped to avoid duplicate saves
+   */
+  markAsServerApiHandler() {
+    this.inServerApiHandler = true;
+  }
+  
   async save(): Promise<void> {
     // Ensure data is not null and has required fields
     if (!this.data || !this.data.id) {
@@ -251,8 +263,9 @@ export class Gear {
       debugLog("LABEL", `save() called with label = "${this.data.label}"`);
     }
     
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !this.inServerApiHandler) {
       // Client-side: Use the API endpoint
+      // Skip if we're already inside a server API handler to avoid redundant saves
       try {
         // Check if the gear already exists
         const checkResponse = await fetch(`/api/gears/${this.data.id}`);
@@ -665,53 +678,30 @@ export class Gear {
   }
 
   async addMessage({ role, content }: { role: Role; content: string }) {
-    console.log(`LABEL DEBUG: addMessage called with role ${role}`);
+    console.log(`Gear.addMessage: Adding ${role} message to gear ${this.data.id}`);
     
-    await this.chat.addMessage({ role, content });
-    // Note: we don't need to push to data.messages since the GearChat maintains the same reference
-    await this.save();
-    
-    // Explicitly update on the server as well to ensure consistency
-    if (typeof window !== 'undefined') {
+    try {
+      // Add message to chat object
+      await this.chat.addMessage({ role, content });
+      console.log(`Gear.addMessage: Message added to chat, saving to data store`);
+      
+      // Note: we don't need to push to data.messages since the GearChat maintains the same reference
+      // But let's log what we're going to save
+      console.log(`Gear.addMessage: Current messages array length: ${this.data.messages.length}`);
+      console.log(`Gear.addMessage: Last message role: ${this.data.messages[this.data.messages.length-1]?.role || 'none'}`);
+      
+      // Save to persistent storage - this will now intelligently handle server-side vs client-side
+      // The updated save() method will skip client-side API calls if inServerApiHandler is true
       try {
-        // First check if gear exists on server
-        const checkResponse = await fetch(`/api/gears/${this.data.id}`);
-        
-        if (checkResponse.ok) {
-          // Gear exists, update it
-          console.log(`Updating gear ${this.data.id} messages on server`);
-          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              messages: this.data.messages
-            }),
-          });
-          
-          if (!updateResponse.ok) {
-            console.warn(`Failed to update gear ${this.data.id} messages:`, await updateResponse.text());
-          }
-        } else {
-          // Gear doesn't exist, create it
-          console.log(`Creating missing gear ${this.data.id} on server with messages`);
-          const createResponse = await fetch('/api/gears', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: this.data.id,
-              messages: this.data.messages,
-              outputUrls: this.data.outputUrls,
-              exampleInputs: this.data.exampleInputs
-            }),
-          });
-          
-          if (!createResponse.ok) {
-            console.warn(`Failed to create gear ${this.data.id} on server:`, await createResponse.text());
-          }
-        }
-      } catch (err) {
-        console.warn("Error updating gear messages on server:", err);
+        await this.save();
+        console.log(`Gear.addMessage: Successfully saved gear data with new message`);
+      } catch (saveError) {
+        console.error(`Gear.addMessage: Error saving gear after adding message:`, saveError);
+        throw saveError;
       }
+    } catch (error) {
+      console.error(`Gear.addMessage: Unexpected error adding message:`, error);
+      throw error;
     }
 
     // Generate a new label if this completes a message exchange (user then assistant)
@@ -886,7 +876,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           
           try {
             const result = JSON.parse(text);
-            return result.content || result.text || result.response || text;
+            return result.text || result.content || result.response || text;
           } catch (jsonError) {
             console.warn("Failed to parse JSON response, using raw text:", jsonError);
             return text; // Use raw text if JSON parsing fails
@@ -1168,13 +1158,13 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           try {
             const result = JSON.parse(text);
             
-            if (!result.content && !result.text && !result.response) {
+            if (!result.text && !result.content && !result.response) {
               console.warn("Received potentially empty content from LLM response");
               // Return the raw text if we can't find content or text fields
               return text;
             }
             
-            return result.content || result.text || result.response || text;
+            return result.text || result.content || result.response || text;
           } catch (jsonError) {
             console.warn("Failed to parse JSON response, using raw text:", jsonError);
             return text; // Use raw text if JSON parsing fails

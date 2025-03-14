@@ -61,24 +61,36 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   }));
 
   // Use the Vercel AI SDK useChat hook
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
     api: `/api/gears/${gearId}/chat`,
     id: `chat-${gearId}`,
     initialMessages: formattedInitialMessages,
     onResponse: (response) => {
       if (!response.ok) {
         console.warn(`Chat API error: ${response.status} ${response.statusText}`);
+        // Log additional details if available
+        response.json().then(data => {
+          console.error('Chat API error details:', data);
+        }).catch(e => {
+          console.error('Failed to parse error response:', e);
+        });
+      } else {
+        console.log('Chat API successful response');
       }
     },
     onFinish: (message) => {
       // When the AI response is complete, send it to the parent component
       if (message.content && message.role === "assistant") {
+        console.log('Chat completed successfully, notifying parent component');
         onMessageSent({
           role: message.role,
           content: message.content
         });
       }
     },
+    onError: (error) => {
+      console.error('Chat API error in useChat hook:', error);
+    }
   });
 
   // When user sends a message, we need to notify the parent
@@ -157,6 +169,15 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
               <div className="text-left">
                 <span className="inline-block p-1.5 rounded-lg text-xs bg-gray-200 text-black">
                   AI is thinking...
+                </span>
+              </div>
+            )}
+            {error && (
+              <div className="text-left mt-2">
+                <span className="inline-block p-1.5 rounded-lg text-xs bg-red-100 text-red-800 border border-red-300">
+                  Error: {typeof error === 'string' ? error : 
+                         error?.message ? error.message : 
+                         'Failed to get response'}
                 </span>
               </div>
             )}
