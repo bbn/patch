@@ -4,10 +4,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ### Prerequisites
 
-This application requires a Vercel KV instance for data persistence. You'll need to set up Vercel KV in your environment:
+This application requires a Firebase project with Firestore database for data persistence:
 
-1. Create a Vercel KV instance: [Vercel KV Documentation](https://vercel.com/docs/storage/vercel-kv)
-2. Copy the `.env.example` file to `.env.local` and fill in your Vercel KV credentials
+1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
+2. Set up a Firestore database in your project
+3. Create two collections: `patches` and `gears`
+4. Generate a web app configuration in Firebase Project Settings
+5. Copy the `.env.example` file to `.env.local` and fill in your Firebase configuration
 
 ### Environment Variables
 
@@ -15,6 +18,20 @@ The following environment variables can be set in your `.env.local` file:
 
 - `DEBUG_LOGGING` - Set to `true` to enable verbose debug logging (default: `false`)
 - `NEXT_PUBLIC_APP_URL` - Base URL for the application (used for API calls in Edge Runtime)
+- `NEXT_PUBLIC_FIREBASE_API_KEY` - Firebase API Key
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Firebase Auth Domain
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID` - Firebase Project ID
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` - Firebase Storage Bucket
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` - Firebase Messaging Sender ID
+- `NEXT_PUBLIC_FIREBASE_APP_ID` - Firebase App ID
+
+### Data Migration
+
+If you're migrating from the previous Redis/Vercel KV implementation:
+
+1. Make sure you have both Redis KV and Firebase configurations in your `.env.local`
+2. Run the development server
+3. Visit `/api/kv-migrate` endpoint to migrate all data from Redis KV to Firestore
 
 ### Development Server
 
@@ -44,6 +61,10 @@ To learn more about Next.js, take a look at the following resources:
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Real-time Updates
+
+This project uses Firestore's real-time listeners to provide real-time updates to the UI. When data changes in Firestore, the UI will automatically update to reflect these changes.
 
 ## Deploy on Vercel
 

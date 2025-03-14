@@ -1,7 +1,7 @@
 import { Gear } from "./Gear";
-import { saveToKV, getFromKV, deleteFromKV, listKeysFromKV } from '../kv';
-
-// No in-memory store - using Vercel KV exclusively for serverless architecture
+import { savePatch, getPatch, deletePatch, getAllPatches } from '../firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 export interface PatchNode {
   id: string;
@@ -34,6 +34,7 @@ export interface PatchData {
 
 export class Patch {
   private data: PatchData;
+  private unsubscribe: (() => void) | null = null;
 
   constructor(data: Partial<PatchData> & { id: string; name: string }) {
     this.data = {
@@ -160,7 +161,7 @@ export class Patch {
         return false;
       }
     } else {
-      // Server-side: Use KV directly
+      // Server-side: Use Firestore directly
       // First retrieve the patch to get all gear IDs
       try {
         // Get the patch
@@ -191,10 +192,10 @@ export class Patch {
         });
         
         // Delete the patch itself
-        const deleted = await deleteFromKV(`patch:${id}`);
+        const deleted = await deletePatch(id);
         
         if (deleted) {
-          console.log(`Deleted patch ${id} from KV along with ${gearIds.length} gears`);
+          console.log(`Deleted patch ${id} from Firestore along with ${gearIds.length} gears`);
         }
         
         return deleted;
@@ -203,13 +204,13 @@ export class Patch {
         
         // Attempt to delete the patch anyway, even if gear deletion had errors
         try {
-          const deleted = await deleteFromKV(`patch:${id}`);
+          const deleted = await deletePatch(id);
           if (deleted) {
-            console.log(`Deleted patch ${id} from KV despite gear deletion errors`);
+            console.log(`Deleted patch ${id} from Firestore despite gear deletion errors`);
           }
           return deleted;
         } catch (kvError) {
-          console.error(`Failed to delete patch ${id} from KV:`, kvError);
+          console.error(`Failed to delete patch ${id} from Firestore:`, kvError);
           return false;
         }
       }
@@ -259,17 +260,53 @@ export class Patch {
         return null;
       }
     } else {
-      // Server-side: Use KV directly
-      const patchData = await getFromKV<PatchData>(`patch:${id}`);
+      // Server-side: Use Firestore directly
+      const patchData = await getPatch<PatchData>(id);
       
       if (patchData) {
-        console.log(`Found patch ${id} in KV store`);
+        console.log(`Found patch ${id} in Firestore`);
         return new Patch(patchData);
       }
       
       // Return null if patch not found
       return null;
     }
+  }
+
+  // Subscribe to real-time updates for a patch
+  // This should be called on client-side only
+  subscribeToUpdates(callback: (patch: Patch) => void): () => void {
+    if (typeof window === 'undefined') {
+      console.warn('subscribeToUpdates should only be called on the client side');
+      return () => {};
+    }
+
+    // Unsubscribe from any existing subscription
+    if (this.unsubscribe) {
+      this.unsubscribe();
+    }
+
+    // Create a new subscription
+    const docRef = doc(db, 'patches', this.data.id);
+    this.unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const updatedData = docSnap.data() as PatchData;
+        // Update the internal data
+        this.data = updatedData;
+        // Notify the callback
+        callback(this);
+      }
+    }, (error) => {
+      console.error(`Error in real-time updates for patch ${this.data.id}:`, error);
+    });
+
+    // Return the unsubscribe function
+    return () => {
+      if (this.unsubscribe) {
+        this.unsubscribe();
+        this.unsubscribe = null;
+      }
+    };
   }
   
   /**
@@ -344,21 +381,42 @@ export class Patch {
         return [];
       }
     } else {
-      // Server-side: Use KV directly
+      // Server-side: Use Firestore directly
       const patches: Patch[] = [];
       
-      // Get all patches from KV
-      const keys = await listKeysFromKV('patch:*');
+      // Get all patches from Firestore
+      const patchDataList = await getAllPatches();
       
-      for (const key of keys) {
-        const patchData = await getFromKV<PatchData>(key);
-        if (patchData) {
-          patches.push(new Patch(patchData));
-        }
+      for (const patchData of patchDataList) {
+        patches.push(new Patch(patchData as PatchData));
       }
       
       return patches;
     }
+  }
+
+  // Subscribe to real-time updates for all patches
+  // This should be called on client-side only
+  static subscribeToAll(callback: (patches: Patch[]) => void): () => void {
+    if (typeof window === 'undefined') {
+      console.warn('subscribeToAll should only be called on the client side');
+      return () => {};
+    }
+
+    // Create a new subscription to the patches collection
+    const patchesRef = collection(db, 'patches');
+    const unsubscribe = onSnapshot(patchesRef, (querySnapshot) => {
+      const patches: Patch[] = [];
+      querySnapshot.forEach((doc) => {
+        patches.push(new Patch(doc.data() as PatchData));
+      });
+      callback(patches);
+    }, (error) => {
+      console.error('Error in real-time updates for all patches:', error);
+    });
+
+    // Return the unsubscribe function
+    return unsubscribe;
   }
 
   async save(): Promise<void> {
@@ -438,9 +496,9 @@ export class Patch {
         }
       }
     } else {
-      // Server-side: Use KV directly
-      await saveToKV(`patch:${this.data.id}`, this.data);
-      console.log(`Saved patch to KV: ${this.data.id}`);
+      // Server-side: Use Firestore directly
+      await savePatch(this.data.id, this.data);
+      console.log(`Saved patch to Firestore: ${this.data.id}`);
     }
   }
 

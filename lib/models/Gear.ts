@@ -1,9 +1,9 @@
-import { saveToKV, getFromKV, deleteFromKV, listKeysFromKV } from '../kv';
+import { saveGear, getGear, deleteGear, getAllGears } from '../firestore';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../firebase';
 import { GearChat } from "./GearChat";
 import { Message, Role, GearInput, GearOutput } from "./types";
 import { debugLog, isDebugLoggingEnabled } from "../utils";
-
-// No in-memory store - using Vercel KV exclusively for serverless architecture
 
 export interface ExampleInput {
   id: string;
@@ -41,6 +41,7 @@ export interface GearData {
 export class Gear {
   private data: GearData;
   private chat: GearChat;
+  private unsubscribe: (() => void) | null = null;
 
   constructor(data: Partial<GearData> & { id: string }) {
     this.data = {
@@ -111,11 +112,11 @@ export class Gear {
         return false;
       }
     } else {
-      // Server-side: Use KV directly
-      const deleted = await deleteFromKV(`gear:${id}`);
+      // Server-side: Use Firestore directly
+      const deleted = await deleteGear(id);
       
       if (deleted) {
-        console.log(`Deleted gear ${id} from KV`);
+        console.log(`Deleted gear ${id} from Firestore`);
       }
       
       return deleted;
@@ -165,17 +166,55 @@ export class Gear {
         return null;
       }
     } else {
-      // Server-side: Use KV directly
-      const gearData = await getFromKV<GearData>(`gear:${id}`);
+      // Server-side: Use Firestore directly
+      const gearData = await getGear<GearData>(id);
       
       if (gearData) {
-        console.log(`Found gear ${id} in KV store`);
+        console.log(`Found gear ${id} in Firestore`);
         return new Gear(gearData);
       }
       
       // Return null if gear not found
       return null;
     }
+  }
+
+  // Subscribe to real-time updates for a gear
+  // This should be called on client-side only
+  subscribeToUpdates(callback: (gear: Gear) => void): () => void {
+    if (typeof window === 'undefined') {
+      console.warn('subscribeToUpdates should only be called on the client side');
+      return () => {};
+    }
+
+    // Unsubscribe from any existing subscription
+    if (this.unsubscribe) {
+      this.unsubscribe();
+    }
+
+    // Create a new subscription
+    const docRef = doc(db, 'gears', this.data.id);
+    this.unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const updatedData = docSnap.data() as GearData;
+        // Update the internal data
+        this.data = updatedData;
+        // Recreate chat instance with updated messages
+        this.chat = new GearChat(this.data.messages, this.data.id);
+        // Notify the callback
+        callback(this);
+      }
+    }, (error) => {
+      console.error(`Error in real-time updates for gear ${this.data.id}:`, error);
+    });
+
+    // Return the unsubscribe function
+    return () => {
+      if (this.unsubscribe) {
+        this.unsubscribe();
+        this.unsubscribe = null;
+      }
+    };
   }
   
   // Get all gears from the store
@@ -217,21 +256,42 @@ export class Gear {
         return [];
       }
     } else {
-      // Server-side: Use KV directly
+      // Server-side: Use Firestore directly
       const gears: Gear[] = [];
       
-      // Get all gears from KV
-      const keys = await listKeysFromKV('gear:*');
+      // Get all gears from Firestore
+      const gearDataList = await getAllGears();
       
-      for (const key of keys) {
-        const gearData = await getFromKV<GearData>(key);
-        if (gearData) {
-          gears.push(new Gear(gearData));
-        }
+      for (const gearData of gearDataList) {
+        gears.push(new Gear(gearData as GearData));
       }
       
       return gears;
     }
+  }
+
+  // Subscribe to real-time updates for all gears
+  // This should be called on client-side only
+  static subscribeToAll(callback: (gears: Gear[]) => void): () => void {
+    if (typeof window === 'undefined') {
+      console.warn('subscribeToAll should only be called on the client side');
+      return () => {};
+    }
+
+    // Create a new subscription to the gears collection
+    const gearsRef = collection(db, 'gears');
+    const unsubscribe = onSnapshot(gearsRef, (querySnapshot) => {
+      const gears: Gear[] = [];
+      querySnapshot.forEach((doc) => {
+        gears.push(new Gear(doc.data() as GearData));
+      });
+      callback(gears);
+    }, (error) => {
+      console.error('Error in real-time updates for all gears:', error);
+    });
+
+    // Return the unsubscribe function
+    return unsubscribe;
   }
 
   async save(): Promise<void> {
@@ -328,15 +388,15 @@ export class Gear {
         }
       }
     } else {
-      // Server-side: Use KV directly
+      // Server-side: Use Firestore directly
       try {
-        console.log(`Saving gear ${this.data.id} to KV`);
-        debugLog("GEAR-SAVE", `Server side: Saving gear ${this.data.id} to KV with ${this.data.log?.length || 0} log entries`);
+        console.log(`Saving gear ${this.data.id} to Firestore`);
+        debugLog("GEAR-SAVE", `Server side: Saving gear ${this.data.id} to Firestore with ${this.data.log?.length || 0} log entries`);
         
-        await saveToKV(`gear:${this.data.id}`, this.data);
-        debugLog("GEAR-SAVE", `Successfully saved gear ${this.data.id} to KV`);
+        await saveGear(this.data.id, this.data);
+        debugLog("GEAR-SAVE", `Successfully saved gear ${this.data.id} to Firestore`);
       } catch (kvError) {
-        console.error(`Error saving to KV:`, kvError);
+        console.error(`Error saving to Firestore:`, kvError);
       }
     }
   }

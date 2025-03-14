@@ -32,109 +32,52 @@ export default function PatchesPage() {
   const [newPatchName, setNewPatchName] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const loadPatches = async () => {
-    try {
-      setLoading(true);
-      
-      // Try to load patches from localStorage first for immediate display
-      let patchList: PatchSummary[] = [];
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('patches');
-        if (saved) {
-          patchList = JSON.parse(saved);
-          // Sort and show immediately
-          const sortedPatches = [...patchList].sort((a, b) => b.updatedAt - a.updatedAt);
-          setPatches(sortedPatches);
-        }
-      }
-      
-      // Then try to load from the server model - ALWAYS get fresh data
-      try {
-        // Bypass all caching by using a timestamp parameter
-        const timestamp = Date.now();
-        const response = await fetch(`/api/patches?t=${timestamp}`, { 
-          cache: 'no-store',
-          headers: { 
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        });
-        
-        if (response.ok) {
-          const freshPatches = await response.json();
-          
-          // Log details for debugging
-          freshPatches.forEach((patch: PatchSummary) => {
-            console.log(`API: Patch ${patch.id} - ${patch.name} has ${patch.nodeCount} nodes, description: "${patch.description}"`);
-          });
-          
-          // Sort patches by updatedAt in reverse chronological order
-          const sortedPatches = [...freshPatches].sort((a, b) => b.updatedAt - a.updatedAt);
-          setPatches(sortedPatches);
-          
-          // Update localStorage with the sorted fresh data
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('patches', JSON.stringify(sortedPatches));
-          }
-          return;
-        }
-        
-        // If API fails, fallback to direct model access with fresh data from KV
-        const allPatches = await Patch.findAll();
-        if (allPatches.length > 0) {
-          // For each patch, ensure we have fresh data with an individual lookup
-          const freshPatchPromises = allPatches.map(async patch => {
-            try {
-              // Force a fresh lookup from KV storage for each patch
-              const freshPatch = await Patch.findById(patch.id);
-              if (freshPatch) {
-                console.log(`Model: Patch ${patch.id} - ${freshPatch.name} has ${freshPatch.nodes.length} nodes, description: "${freshPatch.description}"`);
-                return {
-                  id: freshPatch.id,
-                  name: freshPatch.name,
-                  description: freshPatch.description,
-                  updatedAt: freshPatch.updatedAt,
-                  nodeCount: freshPatch.nodes.length || 0
-                };
-              }
-            } catch (err) {
-              console.error(`Error getting fresh data for patch ${patch.id}:`, err);
-            }
-            
-            // Fallback to the original patch data if fresh lookup fails
-            return {
-              id: patch.id,
-              name: patch.name,
-              description: patch.description,
-              updatedAt: patch.updatedAt,
-              nodeCount: patch.nodes.length || 0
-            };
-          });
-          
-          // Wait for all fresh patch data
-          patchList = await Promise.all(freshPatchPromises);
-          
-          // Sort patches by updatedAt in reverse chronological order
-          const sortedPatches = [...patchList].sort((a, b) => b.updatedAt - a.updatedAt);
-          
-          // Update localStorage with the sorted server data
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('patches', JSON.stringify(sortedPatches));
-          }
-          
-          setPatches(sortedPatches);
-        }
-      } catch (error) {
-        console.error("Error loading patches from server:", error);
-        // Continue with localStorage data if server fetch fails
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-  
   useEffect(() => {
-    loadPatches();
+    // Initial load from localStorage for immediate display
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('patches');
+      if (saved) {
+        try {
+          const localPatches = JSON.parse(saved);
+          const sortedPatches = [...localPatches].sort((a, b) => b.updatedAt - a.updatedAt);
+          setPatches(sortedPatches);
+          setLoading(false);
+        } catch (err) {
+          console.error("Error loading patches from localStorage:", err);
+        }
+      }
+    }
+
+    // Subscribe to real-time updates from Firestore
+    const unsubscribe = Patch.subscribeToAll((newPatches) => {
+      console.log(`Real-time update: Received ${newPatches.length} patches`);
+      
+      // Convert patches to summary format
+      const patchSummaries = newPatches.map(patch => ({
+        id: patch.id,
+        name: patch.name,
+        description: patch.description,
+        updatedAt: patch.updatedAt,
+        nodeCount: patch.nodes.length
+      }));
+      
+      // Sort patches by updatedAt in reverse chronological order
+      const sortedPatches = [...patchSummaries].sort((a, b) => b.updatedAt - a.updatedAt);
+      
+      // Update state with fresh data
+      setPatches(sortedPatches);
+      setLoading(false);
+      
+      // Also update localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('patches', JSON.stringify(sortedPatches));
+      }
+    });
+
+    // Clean up subscription when component unmounts
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const handleCreatePatch = async () => {
@@ -150,16 +93,7 @@ export default function PatchesPage() {
       nodeCount: 0
     };
     
-    // Add to local state
-    setPatches(prevPatches => [...prevPatches, newPatch]);
-    
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
-      const currentPatches = JSON.parse(localStorage.getItem('patches') || '[]');
-      localStorage.setItem('patches', JSON.stringify([...currentPatches, newPatch]));
-    }
-    
-    // Create in the model
+    // Create in the model - Firestore subscription will update our state
     try {
       await Patch.create({
         id: patchId,
@@ -167,6 +101,14 @@ export default function PatchesPage() {
       });
     } catch (error) {
       console.error("Error creating patch:", error);
+      // If model creation fails, manually update local state
+      setPatches(prevPatches => [...prevPatches, newPatch]);
+      
+      // Save to localStorage
+      if (typeof window !== 'undefined') {
+        const currentPatches = JSON.parse(localStorage.getItem('patches') || '[]');
+        localStorage.setItem('patches', JSON.stringify([...currentPatches, newPatch]));
+      }
     }
     
     // Reset input
@@ -197,11 +139,8 @@ export default function PatchesPage() {
     try {
       const success = await Patch.deleteById(patchId);
       
-      if (success) {
-        // Remove from state if delete was successful
-        setPatches(prevPatches => prevPatches.filter(patch => patch.id !== patchId));
-      } else {
-        // If delete failed, revert the UI
+      if (!success) {
+        // If delete failed, revert the UI (success case will be handled by Firestore subscription)
         setPatches(prevPatches => 
           prevPatches.map(patch => 
             patch.id === patchId 
