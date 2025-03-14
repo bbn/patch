@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { Patch } from "@/lib/models/Patch";
 import { Gear } from "@/lib/models/Gear";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function POST(
   request: NextRequest,

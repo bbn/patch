@@ -1,9 +1,9 @@
 import { openai } from '@ai-sdk/openai';
-import { createIdGenerator, streamText } from 'ai';
+import { generateText } from 'ai';
 import { Gear } from "@/lib/models/Gear";
 import { NextRequest } from 'next/server';
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function POST(
   request: NextRequest,
@@ -28,21 +28,17 @@ export async function POST(
     // Process the label generation request
     console.log("Processing label generation request");
     
-    const result = await streamText({
+    const result = await generateText({
       model: openai('gpt-4o-mini'), // Using a smaller model for label generation is sufficient
       messages: [
         {
           role: 'user',
           content: prompt
         }
-      ],
-      experimental_generateMessageId: createIdGenerator({
-        prefix: 'label',
-        size: 16,
-      }),
+      ]
     });
     
-    return result.toDataStreamResponse();
+    return Response.json({ response: result.text });
   } catch (error) {
     console.error("Error in label API:", error);
     

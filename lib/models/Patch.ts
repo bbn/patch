@@ -1,5 +1,23 @@
 import { Gear } from "./Gear";
+// Import client-side operations
 import { savePatch, getPatch, deletePatch, getAllPatches } from '../firestore';
+
+// Import server-side operations for Node.js environment
+// Using dynamic import to avoid bundling firebase-admin code in client components
+let savePatchAdmin: (id: string, data: any) => Promise<void>;
+let getPatchAdmin: <T>(id: string) => Promise<T | null>;
+let deletePatchAdmin: (id: string) => Promise<boolean>;
+let getAllPatchesAdmin: () => Promise<any[]>;
+
+// Only import server functions if running on the server
+if (typeof window === 'undefined') {
+  // Using require instead of import to avoid bundling issues
+  const serverFunctions = require('../server/firestore-admin');
+  savePatchAdmin = serverFunctions.savePatchAdmin;
+  getPatchAdmin = serverFunctions.getPatchAdmin;
+  deletePatchAdmin = serverFunctions.deletePatchAdmin;
+  getAllPatchesAdmin = serverFunctions.getAllPatchesAdmin;
+}
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -64,100 +82,22 @@ export class Patch {
     if (typeof window !== 'undefined') {
       // Client-side: Use the API endpoint
       try {
-        // First retrieve the patch so we know which gears to delete from localStorage
-        let associatedGearIds: string[] = [];
-        try {
-          const patch = await Patch.findById(id);
-          if (patch) {
-            associatedGearIds = patch.nodes.map(node => node.data.gearId);
-            console.log(`Found ${associatedGearIds.length} gears associated with patch ${id}`);
-          }
-        } catch (findError) {
-          console.error(`Error finding patch ${id} before deletion:`, findError);
-        }
-        
         // Delete the patch via API (which will cascade delete the gears on the server)
+        console.log(`Calling API to delete patch ${id} and associated gears`);
         const response = await fetch(`/api/patches/${id}`, {
           method: 'DELETE',
         });
         
-        const success = response.ok;
-        
-        // Also clean up localStorage for backward compatibility
-        try {
-          // Clean up patch from localStorage
-          const savedPatchesStr = localStorage.getItem('patches');
-          if (savedPatchesStr) {
-            const savedPatches = JSON.parse(savedPatchesStr);
-            const filteredPatches = savedPatches.filter((p: {id: string}) => p.id !== id);
-            if (filteredPatches.length !== savedPatches.length) {
-              localStorage.setItem('patches', JSON.stringify(filteredPatches));
-            }
-          }
-          
-          // Also clean up associated gears from localStorage
-          if (associatedGearIds.length > 0) {
-            const savedGearsStr = localStorage.getItem('gears');
-            if (savedGearsStr) {
-              const savedGears = JSON.parse(savedGearsStr);
-              const filteredGears = savedGears.filter((g: {id: string}) => !associatedGearIds.includes(g.id));
-              if (filteredGears.length !== savedGears.length) {
-                localStorage.setItem('gears', JSON.stringify(filteredGears));
-                console.log(`Removed ${savedGears.length - filteredGears.length} gears from localStorage`);
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`Error cleaning up localStorage during patch deletion:`, error);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Error response from patch deletion API: ${response.status} ${errorText}`);
+          throw new Error(`HTTP error deleting patch! status: ${response.status} - ${errorText}`);
         }
         
-        return success;
+        console.log(`Successfully deleted patch ${id} via API`);
+        return true;
       } catch (error) {
         console.error(`Error deleting patch ${id}:`, error);
-        
-        // Fallback to just localStorage if API fails
-        try {
-          // Find associated gears in localStorage
-          let associatedGearIds: string[] = [];
-          const savedPatchesStr = localStorage.getItem('patches');
-          if (savedPatchesStr) {
-            const savedPatches = JSON.parse(savedPatchesStr);
-            const patchToDelete = savedPatches.find((p: {id: string, nodes?: any[]}) => p.id === id);
-            if (patchToDelete && patchToDelete.nodes) {
-              associatedGearIds = patchToDelete.nodes
-                .filter((node: any) => node.data && node.data.gearId)
-                .map((node: any) => node.data.gearId);
-            }
-          }
-          
-          // Delete the patch from localStorage
-          const savedPatchesStr2 = localStorage.getItem('patches');
-          if (savedPatchesStr2) {
-            const savedPatches = JSON.parse(savedPatchesStr2);
-            const filteredPatches = savedPatches.filter((p: {id: string}) => p.id !== id);
-            const success = filteredPatches.length !== savedPatches.length;
-            if (success) {
-              localStorage.setItem('patches', JSON.stringify(filteredPatches));
-              
-              // Also delete associated gears
-              if (associatedGearIds.length > 0) {
-                const savedGearsStr = localStorage.getItem('gears');
-                if (savedGearsStr) {
-                  const savedGears = JSON.parse(savedGearsStr);
-                  const filteredGears = savedGears.filter((g: {id: string}) => !associatedGearIds.includes(g.id));
-                  if (filteredGears.length !== savedGears.length) {
-                    localStorage.setItem('gears', JSON.stringify(filteredGears));
-                    console.log(`Removed ${savedGears.length - filteredGears.length} gears from localStorage`);
-                  }
-                }
-              }
-            }
-            return success;
-          }
-        } catch (storageError) {
-          console.error(`Error deleting patch ${id} from localStorage:`, storageError);
-        }
-        
         return false;
       }
     } else {
@@ -183,19 +123,28 @@ export class Patch {
         );
         
         // Log any failures, but continue with patch deletion
+        let failureCount = 0;
         deletionResults.forEach((result, index) => {
           if (result.status === 'rejected') {
+            failureCount++;
             console.error(`Failed to delete gear ${gearIds[index]}:`, result.reason);
           } else if (!result.value) {
+            failureCount++;
             console.warn(`Gear ${gearIds[index]} could not be deleted or was not found`);
           }
         });
         
-        // Delete the patch itself
-        const deleted = await deletePatch(id);
+        if (failureCount > 0) {
+          console.warn(`${failureCount} out of ${gearIds.length} gears failed to delete. Continuing with patch deletion.`);
+        }
+        
+        // Delete the patch itself from Firestore using Admin SDK
+        const deleted = await deletePatchAdmin(id);
         
         if (deleted) {
-          console.log(`Deleted patch ${id} from Firestore along with ${gearIds.length} gears`);
+          console.log(`Successfully deleted patch ${id} from Firestore along with ${gearIds.length - failureCount} gears`);
+        } else {
+          console.error(`Failed to delete patch ${id} from Firestore after deleting gears`);
         }
         
         return deleted;
@@ -204,9 +153,12 @@ export class Patch {
         
         // Attempt to delete the patch anyway, even if gear deletion had errors
         try {
-          const deleted = await deletePatch(id);
+          console.log(`Attempting to delete patch ${id} despite errors with gear deletion`);
+          const deleted = await deletePatchAdmin(id);
           if (deleted) {
             console.log(`Deleted patch ${id} from Firestore despite gear deletion errors`);
+          } else {
+            console.error(`Failed to delete patch ${id} from Firestore after gear deletion errors`);
           }
           return deleted;
         } catch (kvError) {
@@ -223,33 +175,6 @@ export class Patch {
       try {
         const response = await fetch(`/api/patches/${id}`);
         if (!response.ok) {
-          // If not found on server, try localStorage as fallback
-          try {
-            const savedPatches = localStorage.getItem('patches');
-            if (savedPatches) {
-              const patches = JSON.parse(savedPatches);
-              const localPatchData = patches.find((p: {id: string}) => p.id === id);
-              
-              if (localPatchData) {
-                console.log(`Found patch ${id} in localStorage`);
-                
-                // Also create it on the server for future requests
-                const createResponse = await fetch('/api/patches', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(localPatchData),
-                });
-                
-                if (!createResponse.ok) {
-                  console.warn(`Failed to migrate patch ${id} to server:`, await createResponse.text());
-                }
-                
-                return new Patch(localPatchData);
-              }
-            }
-          } catch (error) {
-            console.error("Error loading patch from localStorage:", error);
-          }
           return null;
         }
         
@@ -260,8 +185,8 @@ export class Patch {
         return null;
       }
     } else {
-      // Server-side: Use Firestore directly
-      const patchData = await getPatch<PatchData>(id);
+      // Server-side: Use Firebase Admin SDK
+      const patchData = await getPatchAdmin<PatchData>(id);
       
       if (patchData) {
         console.log(`Found patch ${id} in Firestore`);
@@ -349,16 +274,6 @@ export class Patch {
       try {
         const response = await fetch('/api/patches');
         if (!response.ok) {
-          // If server fails, try localStorage as fallback
-          try {
-            const savedPatchesStr = localStorage.getItem('patches');
-            if (savedPatchesStr) {
-              const savedPatches = JSON.parse(savedPatchesStr);
-              return savedPatches.map((patchData: PatchData) => new Patch(patchData));
-            }
-          } catch (error) {
-            console.error("Error loading patches from localStorage:", error);
-          }
           return [];
         }
         
@@ -366,26 +281,14 @@ export class Patch {
         return patchDataList.map((patchData: PatchData) => new Patch(patchData));
       } catch (error) {
         console.error("Error fetching patches:", error);
-        
-        // Fallback to localStorage
-        try {
-          const savedPatchesStr = localStorage.getItem('patches');
-          if (savedPatchesStr) {
-            const savedPatches = JSON.parse(savedPatchesStr);
-            return savedPatches.map((patchData: PatchData) => new Patch(patchData));
-          }
-        } catch (error) {
-          console.error("Error loading patches from localStorage:", error);
-        }
-        
         return [];
       }
     } else {
-      // Server-side: Use Firestore directly
+      // Server-side: Use Firebase Admin SDK
       const patches: Patch[] = [];
       
-      // Get all patches from Firestore
-      const patchDataList = await getAllPatches();
+      // Get all patches from Firestore using Admin SDK
+      const patchDataList = await getAllPatchesAdmin();
       
       for (const patchData of patchDataList) {
         patches.push(new Patch(patchData as PatchData));
@@ -451,54 +354,13 @@ export class Patch {
             console.warn(`Failed to create patch ${this.data.id}:`, await createResponse.text());
           }
         }
-        
-        // For backward compatibility, also update localStorage
-        try {
-          // Get existing patches
-          const savedPatchesStr = localStorage.getItem('patches');
-          const savedPatches = savedPatchesStr ? JSON.parse(savedPatchesStr) : [];
-          
-          // Find index of this patch if it exists
-          const patchIndex = savedPatches.findIndex((p: {id: string}) => p.id === this.data.id);
-          
-          if (patchIndex >= 0) {
-            // Update existing patch
-            savedPatches[patchIndex] = { ...this.data };
-          } else {
-            // Add new patch
-            savedPatches.push({ ...this.data });
-          }
-          
-          // Save back to localStorage
-          localStorage.setItem('patches', JSON.stringify(savedPatches));
-        } catch (error) {
-          console.error("Error saving patch to localStorage:", error);
-        }
       } catch (error) {
         console.error(`Error saving patch ${this.data.id}:`, error);
-        
-        // Fallback to localStorage only
-        try {
-          const savedPatchesStr = localStorage.getItem('patches');
-          const savedPatches = savedPatchesStr ? JSON.parse(savedPatchesStr) : [];
-          
-          const patchIndex = savedPatches.findIndex((p: {id: string}) => p.id === this.data.id);
-          
-          if (patchIndex >= 0) {
-            savedPatches[patchIndex] = { ...this.data };
-          } else {
-            savedPatches.push({ ...this.data });
-          }
-          
-          localStorage.setItem('patches', JSON.stringify(savedPatches));
-        } catch (storageError) {
-          console.error("Error saving patch to localStorage:", storageError);
-        }
       }
     } else {
-      // Server-side: Use Firestore directly
-      await savePatch(this.data.id, this.data);
-      console.log(`Saved patch to Firestore: ${this.data.id}`);
+      // Server-side: Use Firebase Admin SDK
+      await savePatchAdmin(this.data.id, this.data);
+      console.log(`Saved patch to Firestore (server-side): ${this.data.id}`);
     }
   }
 
@@ -722,7 +584,7 @@ export class Patch {
   }
   
   // Import from ReactFlow format
-  async updateFromReactFlow(reactFlowData: { nodes: PatchNode[]; edges: PatchEdge[] }): Promise<void> {
+  async updateFromReactFlow(reactFlowData: { nodes: any[]; edges: any[] }): Promise<void> {
     // Update positions and other visual properties
     this.data.nodes = reactFlowData.nodes;
     

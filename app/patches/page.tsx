@@ -33,21 +33,6 @@ export default function PatchesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initial load from localStorage for immediate display
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('patches');
-      if (saved) {
-        try {
-          const localPatches = JSON.parse(saved);
-          const sortedPatches = [...localPatches].sort((a, b) => b.updatedAt - a.updatedAt);
-          setPatches(sortedPatches);
-          setLoading(false);
-        } catch (err) {
-          console.error("Error loading patches from localStorage:", err);
-        }
-      }
-    }
-
     // Subscribe to real-time updates from Firestore
     const unsubscribe = Patch.subscribeToAll((newPatches) => {
       console.log(`Real-time update: Received ${newPatches.length} patches`);
@@ -67,11 +52,6 @@ export default function PatchesPage() {
       // Update state with fresh data
       setPatches(sortedPatches);
       setLoading(false);
-      
-      // Also update localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('patches', JSON.stringify(sortedPatches));
-      }
     });
 
     // Clean up subscription when component unmounts
@@ -103,12 +83,6 @@ export default function PatchesPage() {
       console.error("Error creating patch:", error);
       // If model creation fails, manually update local state
       setPatches(prevPatches => [...prevPatches, newPatch]);
-      
-      // Save to localStorage
-      if (typeof window !== 'undefined') {
-        const currentPatches = JSON.parse(localStorage.getItem('patches') || '[]');
-        localStorage.setItem('patches', JSON.stringify([...currentPatches, newPatch]));
-      }
     }
     
     // Reset input
@@ -136,22 +110,29 @@ export default function PatchesPage() {
       )
     );
     
+    console.log(`Initiating deletion of patch ${patchId}`);
+    
     try {
-      const success = await Patch.deleteById(patchId);
+      // First make the direct API call to ensure deletion on server
+      const response = await fetch(`/api/patches/${patchId}`, {
+        method: 'DELETE',
+      });
       
-      if (!success) {
-        // If delete failed, revert the UI (success case will be handled by Firestore subscription)
-        setPatches(prevPatches => 
-          prevPatches.map(patch => 
-            patch.id === patchId 
-              ? { ...patch, isDeleting: false } 
-              : patch
-          )
-        );
-        console.error(`Failed to delete patch ${patchId}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
       }
+      
+      console.log(`Patch ${patchId} successfully deleted via API`);
+      
+      // Firestore subscription will handle UI updates
+      // No cleanup needed as Firestore handles persistence
+      
+      // Note: Firestore subscription will update the UI automatically
     } catch (error) {
-      // If delete encounters an error, revert the UI
+      console.error('Error deleting patch:', error);
+      
+      // If deletion fails, revert the UI
       setPatches(prevPatches => 
         prevPatches.map(patch => 
           patch.id === patchId 
@@ -159,7 +140,9 @@ export default function PatchesPage() {
             : patch
         )
       );
-      console.error('Error deleting patch:', error);
+      
+      // Show error message to user
+      alert(`Failed to delete patch: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 

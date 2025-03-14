@@ -224,16 +224,14 @@ export default function PatchPage() {
           setPatchDescription(loadedPatch.description || "");
           
           // Ensure all nodes use the gearNode type and have isProcessing property
-          // Remove label from node data - it will be fetched from Firestore
+          // We need to ensure the label is preserved for TypeScript
           const updatedNodes = loadedPatch.nodes.map((node: PatchNode) => {
-            // Create a new data object without the label
-            const { label, ...dataWithoutLabel } = node.data;
-            
             return {
               ...node,
               type: 'gearNode',
               data: {
-                ...dataWithoutLabel,
+                gearId: node.data.gearId,
+                label: node.data.label || `Gear ${node.data.gearId?.slice(0, 8)}`, 
                 isProcessing: false
               }
             };
@@ -258,16 +256,14 @@ export default function PatchPage() {
             setPatchDescription(updatedPatch.description || "");
             
             // Ensure all nodes use the gearNode type and have isProcessing property
-            // Remove label from node data - it will be fetched from Firestore
+            // We need to ensure the label is preserved for TypeScript
             const updatedNodes = updatedPatch.nodes.map((node: PatchNode) => {
-              // Create a new data object without the label
-              const { label, ...dataWithoutLabel } = node.data;
-              
               return {
                 ...node,
                 type: 'gearNode',
                 data: {
-                  ...dataWithoutLabel,
+                  gearId: node.data.gearId,
+                  label: node.data.label || `Gear ${node.data.gearId?.slice(0, 8)}`, 
                   isProcessing: false
                 }
               };
@@ -304,16 +300,14 @@ export default function PatchPage() {
             setPatchDescription(updatedPatch.description || "");
             
             // Ensure all nodes use the gearNode type
-            // Remove label from node data - it will be fetched from Firestore
+            // We need to ensure the label is preserved for TypeScript
             const updatedNodes = updatedPatch.nodes.map((node: PatchNode) => {
-              // Create a new data object without the label
-              const { label, ...dataWithoutLabel } = node.data;
-              
               return {
                 ...node,
                 type: 'gearNode',
                 data: {
-                  ...dataWithoutLabel,
+                  gearId: node.data.gearId,
+                  label: node.data.label || `Gear ${node.data.gearId?.slice(0, 8)}`, 
                   isProcessing: false
                 }
               };
@@ -473,7 +467,7 @@ export default function PatchPage() {
   };
   
   // Define edge types to ensure proper rendering
-  const edgeTypes = { default: undefined };
+  const edgeTypes = {};
 
   const addGearNode = useCallback(async (position = { x: Math.random() * 300, y: Math.random() * 300 }) => {
     try {
@@ -552,13 +546,14 @@ export default function PatchPage() {
       });
       
       // Create a node representation with the same unique ID base
-      // Note: We no longer include a label in the node data - it will be fetched from Firestore
+      // Include the required label in the node data to satisfy TypeScript
       const newNode: PatchNode = {
         id: nodeId,
         type: 'gearNode',
         position,
         data: {
           gearId: gear.id,
+          label: gear.label,
           isProcessing: false
         }
       };
@@ -651,10 +646,14 @@ export default function PatchPage() {
         console.log(`Server returned label: "${serverGear.label}" for gear ${gearId}`);
         
         // Preserve the label from the node if the server returns a generic label
-        if (serverGear.label && serverGear.label.startsWith(`Gear ${gearId.slice(0, 8)}`) && 
-            currentNodeData.label && !currentNodeData.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) {
-          console.log(`Server label appears generic, preserving node label: "${currentNodeData.label}"`);
-          serverGear.label = currentNodeData.label;
+        const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
+        const serverLabel = typeof serverGear.label === 'string' ? serverGear.label : '';
+        const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
+        
+        if (serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`) && 
+            nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+          console.log(`Server label appears generic, preserving node label: "${nodeLabel}"`);
+          serverGear.label = nodeLabel;
         }
       } else {
         console.log(`Gear ${gearId} not found on server, status: ${serverResponse.status}`);
@@ -718,15 +717,17 @@ export default function PatchPage() {
         console.log(`Gear ${gearId} found locally`);
         
         // Preserve the current node label if it's meaningful (not a generic one)
-        if (currentNodeData && currentNodeData.label && 
-            !currentNodeData.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) {
-          
-          console.log(`Local gear has label "${gear.label}", node has label "${currentNodeData.label}"`);
+        const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
+        const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
+        const gearLabel = typeof gear.label === 'string' ? gear.label : '';
+        
+        if (nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+          console.log(`Local gear has label "${gearLabel}", node has label "${nodeLabel}"`);
           
           // If the local gear has a generic label but the node has a custom one, update the gear
-          if (gear.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) {
-            console.log(`Setting local gear label to node label: "${currentNodeData.label}"`);
-            await gear.setLabel(currentNodeData.label);
+          if (gearLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+            console.log(`Setting local gear label to node label: "${nodeLabel}"`);
+            await gear.setLabel(nodeLabel);
           }
         }
         
@@ -751,19 +752,23 @@ export default function PatchPage() {
           }
           
           // Update server if we have a better label
-          if (gear.label && !gear.label.startsWith(`Gear ${gearId.slice(0, 8)}`) && 
-              serverGear.label && serverGear.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) {
-            console.log(`Updating server with better label: "${gear.label}"`);
+          const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
+          const gearLabel = typeof gear.label === 'string' ? gear.label : '';
+          const serverLabel = serverGear.label && typeof serverGear.label === 'string' ? serverGear.label : '';
+          
+          if (gearLabel && !gearLabel.startsWith(`Gear ${gearIdPrefix}`) && 
+              serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+            console.log(`Updating server with better label: "${gearLabel}"`);
             
             try {
               const updateResponse = await fetch(`/api/gears/${gearId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ label: gear.label })
+                body: JSON.stringify({ label: gearLabel })
               });
               
               if (updateResponse.ok) {
-                console.log(`Successfully updated server label to "${gear.label}"`);
+                console.log(`Successfully updated server label to "${gearLabel}"`);
               }
             } catch (error) {
               console.warn(`Failed to update server label: ${error}`);
@@ -789,11 +794,14 @@ export default function PatchPage() {
         console.log(`Creating local gear ${gearId} from server data`);
         
         // Check if we should use the node's label instead of server's generic label
-        if (currentNodeData && currentNodeData.label && 
-            !currentNodeData.label.startsWith(`Gear ${gearId.slice(0, 8)}`) &&
-            serverGear.label && serverGear.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) {
-          console.log(`Using node's label "${currentNodeData.label}" instead of server's generic label`);
-          serverGear.label = currentNodeData.label;
+        const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
+        const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
+        const serverLabel = serverGear.label && typeof serverGear.label === 'string' ? serverGear.label : '';
+        
+        if (nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`) &&
+            serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+          console.log(`Using node's label "${nodeLabel}" instead of server's generic label`);
+          serverGear.label = nodeLabel;
         }
         
         gear = await Gear.create({
@@ -827,9 +835,11 @@ export default function PatchPage() {
         console.log(`No gear ${gearId} found anywhere, creating new`);
         
         // Use current node label if it's meaningful
-        const initialLabel = (currentNodeData && currentNodeData.label && 
-          !currentNodeData.label.startsWith(`Gear ${gearId.slice(0, 8)}`)) 
-          ? currentNodeData.label
+        const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
+        const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
+        
+        const initialLabel = nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`)
+          ? nodeLabel
           : undefined; // Use default label from Gear constructor
         
         gear = await Gear.create({
@@ -892,7 +902,7 @@ export default function PatchPage() {
     const position = reactFlowInstance.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY
-    });
+    } as any);
     
     // Node dimensions (must match the GearNode component dimensions)
     const nodeWidth = 160;
@@ -1382,7 +1392,7 @@ export default function PatchPage() {
                   console.log("ReactFlow initialized");
                   console.log("Initial nodes:", nodes);
                   console.log("Initial edges:", edges);
-                  setReactFlowInstance(instance);
+                  setReactFlowInstance(instance as any);
                 }}
                 nodesDraggable={true}
                 fitView={false}

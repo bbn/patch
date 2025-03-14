@@ -1,6 +1,25 @@
+// Import client-side operations
 import { saveGear, getGear, deleteGear, getAllGears } from '../firestore';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../firebase';
+
+// Import server-side operations for Node.js environment
+// Using dynamic import to avoid bundling firebase-admin code in client components
+let saveGearAdmin: (id: string, data: any) => Promise<void>;
+let getGearAdmin: <T>(id: string) => Promise<T | null>;
+let deleteGearAdmin: (id: string) => Promise<boolean>;
+let getAllGearsAdmin: () => Promise<any[]>;
+
+// Only import server functions if running on the server
+if (typeof window === 'undefined') {
+  // Using require instead of import to avoid bundling issues
+  const serverFunctions = require('../server/firestore-admin');
+  saveGearAdmin = serverFunctions.saveGearAdmin;
+  getGearAdmin = serverFunctions.getGearAdmin;
+  deleteGearAdmin = serverFunctions.deleteGearAdmin;
+  getAllGearsAdmin = serverFunctions.getAllGearsAdmin;
+}
+
 import { GearChat } from "./GearChat";
 import { Message, Role, GearInput, GearOutput } from "./types";
 import { debugLog, isDebugLoggingEnabled } from "../utils";
@@ -73,50 +92,17 @@ export class Gear {
           method: 'DELETE',
         });
         
-        const success = response.ok;
-        
-        // Also clean up localStorage for backward compatibility
-        try {
-          const savedGearsStr = localStorage.getItem('gears');
-          if (savedGearsStr) {
-            const savedGears = JSON.parse(savedGearsStr);
-            const filteredGears = savedGears.filter((g: {id: string}) => g.id !== id);
-            if (filteredGears.length !== savedGears.length) {
-              localStorage.setItem('gears', JSON.stringify(filteredGears));
-            }
-          }
-        } catch (error) {
-          console.error(`Error deleting gear ${id} from localStorage:`, error);
-        }
-        
-        return success;
+        return response.ok;
       } catch (error) {
         console.error(`Error deleting gear ${id}:`, error);
-        
-        // Fallback to just localStorage if API fails
-        try {
-          const savedGearsStr = localStorage.getItem('gears');
-          if (savedGearsStr) {
-            const savedGears = JSON.parse(savedGearsStr);
-            const filteredGears = savedGears.filter((g: {id: string}) => g.id !== id);
-            const success = filteredGears.length !== savedGears.length;
-            if (success) {
-              localStorage.setItem('gears', JSON.stringify(filteredGears));
-            }
-            return success;
-          }
-        } catch (storageError) {
-          console.error(`Error deleting gear ${id} from localStorage:`, storageError);
-        }
-        
         return false;
       }
     } else {
-      // Server-side: Use Firestore directly
-      const deleted = await deleteGear(id);
+      // Server-side: Use Firebase Admin SDK
+      const deleted = await deleteGearAdmin(id);
       
       if (deleted) {
-        console.log(`Deleted gear ${id} from Firestore`);
+        console.log(`Deleted gear ${id} from Firestore (server-side)`);
       }
       
       return deleted;
@@ -129,33 +115,6 @@ export class Gear {
       try {
         const response = await fetch(`/api/gears/${id}`);
         if (!response.ok) {
-          // If not found on server, try localStorage as fallback
-          try {
-            const savedGears = localStorage.getItem('gears');
-            if (savedGears) {
-              const gears = JSON.parse(savedGears);
-              const localGearData = gears.find((g: {id: string}) => g.id === id);
-              
-              if (localGearData) {
-                console.log(`Found gear ${id} in localStorage`);
-                
-                // Also create it on the server for future requests
-                const createResponse = await fetch('/api/gears', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(localGearData),
-                });
-                
-                if (!createResponse.ok) {
-                  console.warn(`Failed to migrate gear ${id} to server:`, await createResponse.text());
-                }
-                
-                return new Gear(localGearData);
-              }
-            }
-          } catch (error) {
-            console.error("Error loading gear from localStorage:", error);
-          }
           return null;
         }
         
@@ -166,8 +125,8 @@ export class Gear {
         return null;
       }
     } else {
-      // Server-side: Use Firestore directly
-      const gearData = await getGear<GearData>(id);
+      // Server-side: Use Firebase Admin SDK
+      const gearData = await getGearAdmin<GearData>(id);
       
       if (gearData) {
         console.log(`Found gear ${id} in Firestore`);
@@ -224,16 +183,6 @@ export class Gear {
       try {
         const response = await fetch('/api/gears');
         if (!response.ok) {
-          // If server fails, try localStorage as fallback
-          try {
-            const savedGearsStr = localStorage.getItem('gears');
-            if (savedGearsStr) {
-              const savedGears = JSON.parse(savedGearsStr);
-              return savedGears.map((gearData: GearData) => new Gear(gearData));
-            }
-          } catch (error) {
-            console.error("Error loading gears from localStorage:", error);
-          }
           return [];
         }
         
@@ -241,26 +190,14 @@ export class Gear {
         return gearDataList.map((gearData: GearData) => new Gear(gearData));
       } catch (error) {
         console.error("Error fetching gears:", error);
-        
-        // Fallback to localStorage
-        try {
-          const savedGearsStr = localStorage.getItem('gears');
-          if (savedGearsStr) {
-            const savedGears = JSON.parse(savedGearsStr);
-            return savedGears.map((gearData: GearData) => new Gear(gearData));
-          }
-        } catch (error) {
-          console.error("Error loading gears from localStorage:", error);
-        }
-        
         return [];
       }
     } else {
       // Server-side: Use Firestore directly
       const gears: Gear[] = [];
       
-      // Get all gears from Firestore
-      const gearDataList = await getAllGears();
+      // Get all gears from Firestore using Admin SDK
+      const gearDataList = await getAllGearsAdmin();
       
       for (const gearData of gearDataList) {
         gears.push(new Gear(gearData as GearData));
@@ -295,6 +232,12 @@ export class Gear {
   }
 
   async save(): Promise<void> {
+    // Ensure data is not null and has required fields
+    if (!this.data || !this.data.id) {
+      console.error("Cannot save gear: data or id is missing");
+      throw new Error("Cannot save gear: data or id is missing");
+    }
+    
     this.data.updatedAt = Date.now();
     
     // Keep only critical logs for production, use debug logging for verbose output
@@ -343,60 +286,24 @@ export class Gear {
             console.warn(`Failed to create gear ${this.data.id}:`, await createResponse.text());
           }
         }
-        
-        // For backward compatibility, also update localStorage
-        try {
-          // Get existing gears
-          const savedGearsStr = localStorage.getItem('gears');
-          const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
-          
-          // Find index of this gear if it exists
-          const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
-          
-          if (gearIndex >= 0) {
-            // Update existing gear
-            savedGears[gearIndex] = { ...this.data };
-          } else {
-            // Add new gear
-            savedGears.push({ ...this.data });
-          }
-          
-          // Save back to localStorage
-          localStorage.setItem('gears', JSON.stringify(savedGears));
-        } catch (error) {
-          console.error("Error saving gear to localStorage:", error);
-        }
       } catch (error) {
         console.error(`Error saving gear ${this.data.id}:`, error);
-        
-        // Fallback to localStorage only
-        try {
-          const savedGearsStr = localStorage.getItem('gears');
-          const savedGears = savedGearsStr ? JSON.parse(savedGearsStr) : [];
-          
-          const gearIndex = savedGears.findIndex((g: {id: string}) => g.id === this.data.id);
-          
-          if (gearIndex >= 0) {
-            savedGears[gearIndex] = { ...this.data };
-          } else {
-            savedGears.push({ ...this.data });
-          }
-          
-          localStorage.setItem('gears', JSON.stringify(savedGears));
-        } catch (storageError) {
-          console.error("Error saving gear to localStorage:", storageError);
-        }
       }
     } else {
       // Server-side: Use Firestore directly
       try {
-        console.log(`Saving gear ${this.data.id} to Firestore`);
-        debugLog("GEAR-SAVE", `Server side: Saving gear ${this.data.id} to Firestore with ${this.data.log?.length || 0} log entries`);
+        console.log(`Saving gear ${this.data.id} to Firestore (server-side)`);
         
-        await saveGear(this.data.id, this.data);
-        debugLog("GEAR-SAVE", `Successfully saved gear ${this.data.id} to Firestore`);
-      } catch (kvError) {
-        console.error(`Error saving to Firestore:`, kvError);
+        // Make a clean copy of the data to ensure it's a plain object
+        const cleanData = JSON.parse(JSON.stringify(this.data));
+        
+        // Save to Firestore using the Admin SDK
+        await saveGearAdmin(this.data.id, cleanData);
+        
+        console.log(`Successfully saved gear ${this.data.id} to Firestore (server-side)`);
+      } catch (error) {
+        console.error(`Error saving to Firestore:`, error);
+        throw error; // Rethrow to ensure errors are properly propagated
       }
     }
   }
@@ -876,51 +783,9 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       // Clean the response if needed (remove quotes, etc.)
       let cleanedLabel;
       
-      // Handle the case where we're getting SSE metadata in the response
-      if (response.includes('f:{"message') || 
-          response.includes('e:{"finish') || 
-          response.includes('d:{"finish')) {
-        
-        debugLog("LABEL", "Detected SSE metadata in response, extracting text parts");
-        
-        // Try approach 1: Extract text segments by looking for completions
-        const textSegments = [];
-        const regex = /0:"([^"]+)"/g;
-        let match;
-        
-        while ((match = regex.exec(response)) !== null) {
-          textSegments.push(match[1]);
-          debugLog("LABEL", `Found text segment: "${match[1]}"`);
-        }
-        
-        if (textSegments.length > 0) {
-          // Join the segments without spaces (the spaces are already in the text)
-          const rawText = textSegments.join('');
-          debugLog("LABEL", `Raw joined text: ${rawText}`);
-          
-          // Clean up any potential weird spacing issues
-          cleanedLabel = rawText
-            .replace(/\s+/g, ' ')  // Convert multiple spaces to single space
-            .trim();
-            
-          debugLog("LABEL", `Normalized spacing: ${cleanedLabel}`);
-        } else {
-          // Try approach 2: Look for a clean text block in the response
-          const cleanTextMatch = response.match(/"([^"]{3,})"/);
-          if (cleanTextMatch && cleanTextMatch[1]) {
-            cleanedLabel = cleanTextMatch[1].trim();
-            debugLog("LABEL", `Found clean text block: ${cleanedLabel}`);
-          } else {
-            // Fallback to basic cleaning
-            cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
-            debugLog("LABEL", `Using fallback cleaning: ${cleanedLabel}`);
-          }
-        }
-      } else {
-        // Normal response - just clean and trim
-        cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
-        debugLog("LABEL", `Normal response cleaning: ${cleanedLabel}`);
-      }
+      // Normal response - just clean and trim
+      cleanedLabel = response.replace(/^["']|["']$/g, '').trim();
+      debugLog("LABEL", `Response cleaning: ${cleanedLabel}`);
       
       // Fix any unexpected escaping (like backslashes) in the label
       cleanedLabel = cleanedLabel.replace(/\\+/g, '');
@@ -1014,74 +879,21 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
         }
         
-        // Handle potential streaming response
-        if (response.headers.get("content-type")?.includes("text/event-stream")) {
-          // Handle streaming response
-          let accumulatedContent = "";
+        // Regular JSON response
+        try {
+          const text = await response.text();
+          console.log("Raw response:", text.substring(0, 100) + "...");
           
           try {
-            const reader = response.body?.getReader();
-            if (!reader) {
-              console.warn("No reader available for stream");
-              return "Error reading stream";
-            }
-            
-            const decoder = new TextDecoder();
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              const chunk = decoder.decode(value);
-              console.log("Stream chunk received:", chunk.substring(0, 50) + "...");
-              
-              const lines = chunk.split("\n");
-              for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                  const data = line.slice(6).trim();
-                  if (data === "[DONE]") break;
-                  
-                  try {
-                    // Skip empty data
-                    if (!data) continue;
-                    
-                    const parsed = JSON.parse(data);
-                    if (parsed.type === "text" && parsed.value) {
-                      accumulatedContent += parsed.value;
-                    }
-                  } catch (e) {
-                    console.warn("Error parsing SSE data:", e, "Raw data:", data);
-                    // For malformed JSON, just append the raw text instead of failing
-                    if (data && !data.includes('{') && !data.includes('[')) {
-                      accumulatedContent += data;
-                    }
-                  }
-                }
-              }
-            }
-            
-            return accumulatedContent;
-          } catch (streamError) {
-            console.error("Error processing stream:", streamError);
-            return "Error processing stream response";
+            const result = JSON.parse(text);
+            return result.content || result.text || result.response || text;
+          } catch (jsonError) {
+            console.warn("Failed to parse JSON response, using raw text:", jsonError);
+            return text; // Use raw text if JSON parsing fails
           }
-        } else {
-          // Regular JSON response
-          try {
-            const text = await response.text();
-            console.log("Raw response:", text.substring(0, 100) + "...");
-            
-            try {
-              const result = JSON.parse(text);
-              return result.content || result.text || text;
-            } catch (jsonError) {
-              console.warn("Failed to parse JSON response, using raw text:", jsonError);
-              return text; // Use raw text if JSON parsing fails
-            }
-          } catch (textError) {
-            console.error("Error getting response text:", textError);
-            return "Error reading response";
-          }
+        } catch (textError) {
+          console.error("Error getting response text:", textError);
+          return "Error reading response";
         }
       } catch (error) {
         console.error("Error in LLM API call:", error);
@@ -1333,94 +1145,30 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
         }
         
-        // Check if we have a streaming response
-        if (response.headers.get("content-type")?.includes("text/event-stream")) {
-          // Handle streaming response
-          console.log("Got streaming response, processing events");
-          
-          // Simple accumulator for the streamed content
-          let accumulatedContent = "";
-          
-          try {
-            // Create a reader for the response body
-            const reader = response.body?.getReader();
-            if (!reader) {
-              console.warn("No reader available for stream");
-              return "Error reading stream";
-            }
-            
-            const decoder = new TextDecoder();
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              // Decode the chunk
-              const chunk = decoder.decode(value);
-              console.log("Stream chunk received:", chunk.substring(0, 50) + "...");
-              
-              // Simple parsing of SSE format
-              const lines = chunk.split("\n");
-              for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                  const data = line.slice(6).trim();
-                  if (data === "[DONE]") {
-                    // End of stream
-                    break;
-                  }
-                  
-                  // Skip empty data
-                  if (!data) continue;
-                  
-                  try {
-                    // Parse the JSON in the data
-                    const parsed = JSON.parse(data);
-                    if (parsed.type === "text" && parsed.value) {
-                      accumulatedContent += parsed.value;
-                    }
-                  } catch (e) {
-                    console.warn("Error parsing SSE data:", e, "Raw data:", data);
-                    // For malformed JSON, just append the raw text if it looks like plain text
-                    if (data && !data.includes('{') && !data.includes('[')) {
-                      accumulatedContent += data;
-                    }
-                  }
-                }
-              }
-            }
-            
-            console.log("Final accumulated content:", accumulatedContent);
-            return accumulatedContent;
-          } catch (streamError) {
-            console.error("Error processing stream:", streamError);
-            return "Error processing stream response";
-          }
-        } else {
-          // Regular JSON response
-          console.log("Got regular JSON response");
+        // Regular JSON response
+        console.log("Got regular JSON response");
+        
+        try {
+          const text = await response.text();
+          console.log("Raw response:", text.substring(0, 100) + "...");
           
           try {
-            const text = await response.text();
-            console.log("Raw response:", text.substring(0, 100) + "...");
+            const result = JSON.parse(text);
             
-            try {
-              const result = JSON.parse(text);
-              
-              if (!result.content && !result.text) {
-                console.warn("Received potentially empty content from LLM response");
-                // Return the raw text if we can't find content or text fields
-                return text;
-              }
-              
-              return result.content || result.text;
-            } catch (jsonError) {
-              console.warn("Failed to parse JSON response, using raw text:", jsonError);
-              return text; // Use raw text if JSON parsing fails
+            if (!result.content && !result.text && !result.response) {
+              console.warn("Received potentially empty content from LLM response");
+              // Return the raw text if we can't find content or text fields
+              return text;
             }
-          } catch (textError) {
-            console.error("Error getting response text:", textError);
-            return "Error reading response";
+            
+            return result.content || result.text || result.response || text;
+          } catch (jsonError) {
+            console.warn("Failed to parse JSON response, using raw text:", jsonError);
+            return text; // Use raw text if JSON parsing fails
           }
+        } catch (textError) {
+          console.error("Error getting response text:", textError);
+          return "Error reading response";
         }
       } catch (error) {
         console.error("Error in LLM API call:", error);

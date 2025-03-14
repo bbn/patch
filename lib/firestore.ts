@@ -15,10 +15,11 @@ import { db } from './firebase';
 // PATCH COLLECTION OPERATIONS
 
 /**
- * Save a document to the 'patches' collection
+ * Save a document to the 'patches' collection (client-side only)
  */
 export async function savePatch(id: string, data: any): Promise<void> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'patches', id);
     await setDoc(docRef, data);
   } catch (error) {
@@ -28,10 +29,11 @@ export async function savePatch(id: string, data: any): Promise<void> {
 }
 
 /**
- * Get a document from the 'patches' collection
+ * Get a document from the 'patches' collection (client-side only)
  */
 export async function getPatch<T>(id: string): Promise<T | null> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'patches', id);
     const docSnap = await getDoc(docRef);
     
@@ -47,10 +49,11 @@ export async function getPatch<T>(id: string): Promise<T | null> {
 }
 
 /**
- * Delete a document from the 'patches' collection
+ * Delete a document from the 'patches' collection (client-side only)
  */
 export async function deletePatch(id: string): Promise<boolean> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'patches', id);
     await deleteDoc(docRef);
     return true;
@@ -61,10 +64,11 @@ export async function deletePatch(id: string): Promise<boolean> {
 }
 
 /**
- * Get all documents from the 'patches' collection
+ * Get all documents from the 'patches' collection (client-side only)
  */
 export async function getAllPatches(): Promise<DocumentData[]> {
   try {
+    // Client-side: use Firebase JS SDK
     const querySnapshot = await getDocs(collection(db, 'patches'));
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
@@ -76,10 +80,11 @@ export async function getAllPatches(): Promise<DocumentData[]> {
 // GEAR COLLECTION OPERATIONS
 
 /**
- * Save a document to the 'gears' collection
+ * Save a document to the 'gears' collection (client-side only)
  */
 export async function saveGear(id: string, data: any): Promise<void> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'gears', id);
     await setDoc(docRef, data);
   } catch (error) {
@@ -89,10 +94,11 @@ export async function saveGear(id: string, data: any): Promise<void> {
 }
 
 /**
- * Get a document from the 'gears' collection
+ * Get a document from the 'gears' collection (client-side only)
  */
 export async function getGear<T>(id: string): Promise<T | null> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'gears', id);
     const docSnap = await getDoc(docRef);
     
@@ -108,10 +114,11 @@ export async function getGear<T>(id: string): Promise<T | null> {
 }
 
 /**
- * Delete a document from the 'gears' collection
+ * Delete a document from the 'gears' collection (client-side only)
  */
 export async function deleteGear(id: string): Promise<boolean> {
   try {
+    // Client-side: use Firebase JS SDK
     const docRef = doc(db, 'gears', id);
     await deleteDoc(docRef);
     return true;
@@ -122,10 +129,11 @@ export async function deleteGear(id: string): Promise<boolean> {
 }
 
 /**
- * Get all documents from the 'gears' collection
+ * Get all documents from the 'gears' collection (client-side only)
  */
 export async function getAllGears(): Promise<DocumentData[]> {
   try {
+    // Client-side: use Firebase JS SDK
     const querySnapshot = await getDocs(collection(db, 'gears'));
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {

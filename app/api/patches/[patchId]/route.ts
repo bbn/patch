@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Patch } from "@/lib/models/Patch";
 import { NextRequest } from "next/server";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function GET(
   req: NextRequest,
@@ -111,24 +111,43 @@ export async function DELETE(
     const resolvedParams = await params;
     const patchId = resolvedParams.patchId;
     
-    // This will trigger cascade deletion of associated gears
-    const success = await Patch.deleteById(patchId);
+    console.log(`API route: Received request to delete patch ${patchId}`);
     
-    if (!success) {
+    // First check if the patch exists
+    const existingPatch = await Patch.findById(patchId);
+    if (!existingPatch) {
+      console.log(`API route: Patch ${patchId} not found for deletion`);
       return Response.json(
-        { error: "Patch not found or could not be deleted" },
+        { error: "Patch not found" },
         { status: 404 }
       );
     }
     
+    // Count how many gears will be deleted
+    const gearCount = existingPatch.nodes.length;
+    console.log(`API route: Deleting patch ${patchId} with ${gearCount} associated gears`);
+    
+    // This will trigger cascade deletion of associated gears
+    const success = await Patch.deleteById(patchId);
+    
+    if (!success) {
+      console.error(`API route: Failed to delete patch ${patchId}`);
+      return Response.json(
+        { error: "Patch could not be deleted" },
+        { status: 500 }
+      );
+    }
+    
+    console.log(`API route: Successfully deleted patch ${patchId} and ${gearCount} associated gears`);
+    
     return Response.json({ 
       success: true,
-      message: "Patch and all associated gears deleted successfully" 
+      message: `Patch and ${gearCount} associated gears deleted successfully` 
     });
   } catch (error) {
-    console.error(`Error deleting patch:`, error);
+    console.error(`API route: Error deleting patch:`, error);
     return Response.json(
-      { error: "Failed to delete patch" },
+      { error: `Failed to delete patch: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }
     );
   }

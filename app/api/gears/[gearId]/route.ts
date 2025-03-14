@@ -2,7 +2,7 @@ import { Gear } from "@/lib/models/Gear";
 import { Message, Role } from "@/lib/models/types";
 import { debugLog } from "@/lib/utils";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 // Utility function to ensure role has valid type
 function validateRole(role: any): Role {

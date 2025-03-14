@@ -1,7 +1,7 @@
 import { Gear } from "@/lib/models/Gear";
 import { Message, Role } from "@/lib/models/types";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 // Utility function to ensure role has valid type
 function validateRole(role: any): Role {
@@ -67,13 +67,29 @@ export async function POST(req: Request) {
       );
     }
     
+    // Add additional logging
+    console.log(`Creating new gear with ID: ${body.id}`, { 
+      hasMessages: Boolean(body.messages),
+      messageCount: Array.isArray(body.messages) ? body.messages.length : 0,
+      hasOutputUrls: Boolean(body.outputUrls),
+      hasExampleInputs: Boolean(body.exampleInputs)
+    });
+    
     // Create the gear with processed messages to ensure type safety
-    const gear = await Gear.create({
+    const gearData = {
       id: body.id,
       messages: processMessages(body.messages || []),
       outputUrls: Array.isArray(body.outputUrls) ? body.outputUrls : [],
-      exampleInputs: Array.isArray(body.exampleInputs) ? body.exampleInputs : []
-    });
+      exampleInputs: Array.isArray(body.exampleInputs) ? body.exampleInputs : [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      label: body.label || `Gear ${body.id.slice(0, 8)}`
+    };
+    
+    console.log(`Creating gear with data:`, JSON.stringify(gearData, null, 2));
+    
+    // Create the gear
+    const gear = await Gear.create(gearData);
     
     return Response.json({
       id: gear.id,

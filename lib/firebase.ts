@@ -12,19 +12,23 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
+// Client-side only Firebase initialization
 let app: FirebaseApp;
 let db: Firestore;
 
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
+// Only initialize if window is defined (we're on the client)
+// For server-side code, we'll use firebase-admin.ts instead
+if (typeof window !== 'undefined') {
+  if (getApps().length === 0) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = getApps()[0];
+  }
+  
+  db = getFirestore(app);
 }
 
-db = getFirestore(app);
-
-// Export the Firestore instance for use across the application
+// Export the Firestore instance for use in client components
 export { db };
 
 // Helper functions for working with Firestore
