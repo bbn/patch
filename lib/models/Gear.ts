@@ -911,10 +911,20 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
    * Updates the descriptions of all patches containing this gear.
    * This is triggered after significant changes to this gear.
    */
-  async updateContainingPatchDescriptions(): Promise<void> {
+  async updateContainingPatchDescriptions(specificPatchId?: string): Promise<void> {
     if (typeof window !== 'undefined') {
       try {
-        // Find all patches
+        // If a specific patch ID is provided, only update that one
+        if (specificPatchId) {
+          console.log(`Updating description for specific patch ${specificPatchId}`);
+          await fetch(`/api/patches/${specificPatchId}/description`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          return;
+        }
+        
+        // Otherwise, find all patches that contain this gear
         const response = await fetch('/api/patches');
         if (!response.ok) return;
         
@@ -937,8 +947,11 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
             if (containsThisGear) {
               console.log(`Updating description for patch ${patchData.id} due to gear changes`);
               
-              // Trigger description regeneration via the API
-              await fetch(`/api/patches/${patchData.id}?regenerate_description=true`);
+              // Use the description endpoint directly instead of regenerate_description param
+              await fetch(`/api/patches/${patchData.id}/description`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+              });
             }
           } catch (error) {
             console.error(`Error checking patch ${patchData.id} for gear:`, error);

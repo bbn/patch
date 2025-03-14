@@ -1,5 +1,6 @@
 import { Gear } from "@/lib/models/Gear";
 import { Message, Role } from "@/lib/models/types";
+import { Patch } from "@/lib/models/Patch";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,22 @@ export async function POST(req: Request) {
       );
     }
     
+    // Extract patchId and nodeId from request if present
+    const patchId = body.patchId;
+    const nodeId = body.nodeId;
+    let patch = null;
+    
+    // If patchId is provided, validate it exists
+    if (patchId) {
+      patch = await Patch.findById(patchId);
+      if (!patch) {
+        return Response.json(
+          { error: "Specified patch not found" },
+          { status: 404 }
+        );
+      }
+    }
+    
     // Add additional logging
     console.log(`Creating new gear with ID: ${body.id}`, { 
       hasMessages: Boolean(body.messages),
@@ -91,9 +108,36 @@ export async function POST(req: Request) {
     // Create the gear
     const gear = await Gear.create(gearData);
     
+    // If patchId and nodeId provided, add the gear to the patch directly
+    // without triggering separate description update
+    if (patch && nodeId) {
+      // Create a node for this gear
+      const newNode = {
+        id: nodeId,
+        type: 'gear',
+        position: body.position || { x: 100, y: 100 },
+        data: {
+          gearId: gear.id,
+          label: gear.label
+        }
+      };
+      
+      // Add node to patch without saving yet
+      patch.nodes.push(newNode);
+      
+      // Generate description in a single operation
+      if (patch.nodes.length > 0) {
+        await patch.generateDescription();
+      }
+      
+      // Save the patch (single write operation)
+      await patch.save();
+    }
+    
     return Response.json({
       id: gear.id,
-      created: true
+      created: true,
+      patchUpdated: Boolean(patch)
     }, { status: 201 });
   } catch (error) {
     console.error("Error creating gear:", error);

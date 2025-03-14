@@ -495,12 +495,15 @@ export default function PatchPage() {
       ];
       
       // Create gear on the server first via API - this is critical
-      console.log(`Creating gear ${gearId} on server...`);
+      console.log(`Creating gear ${gearId} on server with patchId ${patchId} and nodeId ${nodeId}...`);
       const createResponse = await fetch('/api/gears', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: gearId,
+          patchId: patchId,  // Add patchId parameter
+          nodeId: nodeId,    // Add nodeId parameter
+          position: position, // Add position for node placement
           messages: initialMessages.map(msg => ({
             ...msg,
             role: msg.role as "user" | "assistant" | "system"
@@ -530,6 +533,9 @@ export default function PatchPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             id: gearId,
+            patchId: patchId,  // Add patchId parameter
+            nodeId: nodeId,    // Add nodeId parameter
+            position: position, // Add position for node placement
             messages: initialMessages
           }),
         });

@@ -402,13 +402,15 @@ export class Patch {
   }
 
   // Node management
-  async addNode(node: PatchNode): Promise<void> {
+  async addNode(node: PatchNode, skipSave = false): Promise<void> {
     this.data.nodes.push(node);
     
     // Generate a new description when node is added, as functionality might change
-    await this.generateDescription();
+    await this.generateDescription(true); // Skip saving after description generation
     
-    await this.save();
+    if (!skipSave) {
+      await this.save();
+    }
   }
 
   async updateNode(id: string, updates: Partial<PatchNode>): Promise<boolean> {
@@ -646,7 +648,7 @@ export class Patch {
    * 
    * Use static method Patch.generateAllDescriptions() to update descriptions for all patches.
    */
-  async generateDescription(): Promise<string> {
+  async generateDescription(skipSave = false): Promise<string> {
     try {
       console.log(`Generating description for patch ${this.id}`);
       
@@ -675,6 +677,12 @@ export class Patch {
         
         console.log(`Generated description: "${cleanedDescription}"`);
         this.data.description = cleanedDescription;
+        
+        // Only save if not skipped
+        if (!skipSave) {
+          await this.save();
+        }
+        
         return cleanedDescription;
       }
       
