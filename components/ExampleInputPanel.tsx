@@ -22,7 +22,7 @@ import { ExampleInput } from "@/lib/models/Gear";
 interface ExampleInputPanelProps {
   gearId: string;
   examples: ExampleInput[];
-  onAddExample: (name: string, input: string) => Promise<void>;
+  onAddExample: (name: string, input: string) => Promise<ExampleInput | undefined | void>;
   onUpdateExample: (id: string, name: string, input: string) => Promise<void>;
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;
@@ -107,7 +107,10 @@ export const ExampleInputPanel: React.FC<ExampleInputPanelProps> = ({
         try {
           // Open the accordion item for the new example to show processing status
           setTimeout(() => {
-            document.querySelector(`[data-state="closed"][value="${newExampleId}"]`)?.click();
+            const element = document.querySelector(`[data-state="closed"][value="${newExampleId}"]`);
+            if (element && 'click' in Element.prototype) {
+              (element as HTMLElement).click();
+            }
           }, 100);
           
           // No need to call onProcessExample here if the parent component already processes it

@@ -28,7 +28,7 @@ interface ChatSidebarProps {
   onMessageSent: (message: { role: string; content: string }) => void;
   exampleInputs: ExampleInput[];
   logEntries?: GearLogEntry[];
-  onAddExample: (name: string, input: string) => Promise<void>;
+  onAddExample: (name: string, input: string) => Promise<ExampleInput | undefined | void>;
   onUpdateExample: (id: string, name: string, input: string) => Promise<void>;
   onDeleteExample: (id: string) => Promise<void>;
   onProcessExample: (id: string) => Promise<void>;

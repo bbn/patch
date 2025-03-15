@@ -1,4 +1,4 @@
-import { Gear } from "@/lib/models/Gear";
+import { ExampleInput, Gear } from "@/lib/models/Gear";
 import { Message, Role } from "@/lib/models/types";
 import { debugLog } from "@/lib/utils";
 
@@ -299,7 +299,7 @@ export async function PUT(
       // Add detailed debug logging for examples
       if (updates.exampleInputs.length > 0) {
         console.log(`Example inputs count: ${updates.exampleInputs.length}`);
-        const examplesWithOutput = updates.exampleInputs.filter(ex => ex.output !== undefined);
+        const examplesWithOutput = updates.exampleInputs.filter((ex: ExampleInput) => ex.output !== undefined);
         console.log(`Examples with output: ${examplesWithOutput.length}`);
         
         if (examplesWithOutput.length > 0) {
