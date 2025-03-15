@@ -79,13 +79,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       }
     },
     onFinish: (message) => {
-      // When the AI response is complete, send it to the parent component
+      // IMPORTANT FIX: DO NOT call onMessageSent here
+      // The server is now responsible for saving the message to avoid duplicates
       if (message.content && message.role === "assistant") {
-        console.log('Chat completed successfully, notifying parent component');
-        onMessageSent({
-          role: message.role,
-          content: message.content
-        });
+        console.log('Chat completed successfully, server has already saved the response');
+        // No longer calling onMessageSent here since the route.ts API endpoint 
+        // now properly handles content parsing and saving
       }
     },
     onError: (error) => {
@@ -100,17 +99,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     // Only proceed if there's content to send
     if (!input.trim()) return;
     
-    // Save the current message to pass to onMessageSent after submission
-    const currentMessage = input.trim();
-    
-    // Submit the form using the handler from useChat
+    // IMPORTANT CHANGE: We no longer call onMessageSent here for user messages
+    // The server-side endpoint will handle saving the user message
+    // This prevents duplicate messages when refreshing the page
+
+    // Just submit the form using the handler from useChat
+    // The API endpoint will save the message to the database
     handleSubmit(e);
     
-    // Notify parent of the new user message
-    onMessageSent({
-      role: "user",
-      content: currentMessage
-    });
+    // Add a log to notify that we're letting the server handle message saving
+    console.log('User message sent - server will handle saving');
   };
 
   const [activeTab, setActiveTab] = useState<'chat' | 'examples' | 'log'>('chat');
@@ -161,7 +159,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 <span
                   className={`inline-block p-1.5 rounded-lg text-xs ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
                 >
-                  {m.content}
+                  {renderMessageContent(m.content, m.role)}
                 </span>
               </div>
             ))}
@@ -320,4 +318,55 @@ const formatSource = (source: any): string => {
   }
   
   return 'unknown';
+};
+
+// Process message content for display
+const renderMessageContent = (content: string, role: string): string => {
+  // Only process assistant messages
+  if (role !== 'assistant') return content;
+  
+  try {
+    // Check if the content is JSON format
+    if (content.startsWith('[{') || content.startsWith('{')) {
+      const parsed = JSON.parse(content);
+      
+      // Handle array format: [{"type":"text","text":"content"}]
+      if (Array.isArray(parsed) && parsed[0]?.type === 'text' && 'text' in parsed[0]) {
+        // Remove "Output: " prefix if present
+        let text = parsed[0].text;
+        if (text.startsWith('Output: ')) {
+          text = text.substring(8);
+        }
+        // Remove extra quotes if present
+        if (text.startsWith('"') && text.endsWith('"')) {
+          text = text.substring(1, text.length - 1);
+        }
+        return text;
+      } 
+      // Handle single object format: {"type":"text","text":"content"}
+      else if (parsed?.type === 'text' && 'text' in parsed) {
+        // Remove "Output: " prefix if present
+        let text = parsed.text;
+        if (text.startsWith('Output: ')) {
+          text = text.substring(8);
+        }
+        // Remove extra quotes if present
+        if (text.startsWith('"') && text.endsWith('"')) {
+          text = text.substring(1, text.length - 1);
+        }
+        return text;
+      }
+    }
+    
+    // Handle plain text with "Output:" prefix
+    if (content.startsWith('Output: ')) {
+      return content.substring(8);
+    }
+    
+    // Return content as-is if no special handling needed
+    return content;
+  } catch (e) {
+    console.warn('Error parsing message content:', e);
+    return content;
+  }
 };

@@ -154,50 +154,89 @@ export async function POST(
         }),
         async onFinish({ response }) {
           try {
-            // Add the assistant response to the GearChat after streaming completes
+            // The actual streaming response that's sent to the client
             console.log(`Chat API: Streaming complete, processing response for gear ${gearId}`);
             
+            // Check if response is valid
             if (!response || !response.messages) {
-              console.warn(`Chat API: Invalid response object:`, response);
+              console.log(`Chat API: Invalid response object:`, response);
               return;
             }
             
+            // Find the assistant message in the response
             const assistantMessage = response.messages.find(msg => msg.role === "assistant");
-            if (assistantMessage) {
-              console.log(`Chat API: Found assistant message to save`);
-              
-              // Handle null/undefined content
-              if (assistantMessage.content === null || assistantMessage.content === undefined) {
-                console.warn(`Chat API: Assistant message has null/undefined content`);
-                return;
-              }
-              
-              // Convert content to string, regardless of its original type
-              const contentStr = typeof assistantMessage.content === 'string' 
-                ? assistantMessage.content 
-                : JSON.stringify(assistantMessage.content);
-              
-              // Log the first part of the response for debugging
-              if (contentStr && contentStr.length > 0) {
-                console.log(`Chat API: Response text: ${contentStr.substring(0, 100)}...`);
-              } else {
-                console.warn(`Chat API: Empty response text`);
-                return;
-              }
-              
+            if (!assistantMessage) {
+              console.warn(`Chat API: No assistant message found in streaming response`);
+              return;
+            }
+            
+            // Handle null/undefined content
+            if (assistantMessage.content === null || assistantMessage.content === undefined) {
+              console.warn(`Chat API: Assistant message has null/undefined content`);
+              return;
+            }
+            
+            // Log the raw content type and preview for debugging
+            console.log(`Chat API: Raw assistant content type: ${typeof assistantMessage.content}`);
+            if (typeof assistantMessage.content === 'string') {
+              console.log(`Chat API: Raw content preview: ${assistantMessage.content.substring(0, 100)}...`);
+            } else if (assistantMessage.content !== null && assistantMessage.content !== undefined) {
+              console.log(`Chat API: Raw content preview (object): ${JSON.stringify(assistantMessage.content).substring(0, 100)}...`);
+            }
+            
+            // Process the content - using the documented Vercel AI SDK format
+            // The SDK uses TextUIPart objects: { type: 'text', text: string }
+            let parsedContent;
+            
+            if (typeof assistantMessage.content === 'string') {
               try {
-                // Important: We need to add the message to the gear itself, not just the GearChat
-                // This will ensure the gear.save() method is called to persist the message
-                await gear.addMessage({
-                  role: "assistant", 
-                  content: contentStr
-                });
-                console.log(`Chat API: Successfully saved assistant response to gear ${gearId}`);
-              } catch (saveError) {
-                console.error(`Chat API: Failed to save assistant response:`, saveError);
+                // Attempt to parse if it looks like JSON
+                if (assistantMessage.content.startsWith('[{') || assistantMessage.content.startsWith('{')) {
+                  const parsed = JSON.parse(assistantMessage.content);
+                  
+                  // Handle array format: [{"type":"text","text":"content"}]
+                  if (Array.isArray(parsed) && parsed[0]?.type === 'text' && 'text' in parsed[0]) {
+                    parsedContent = parsed[0].text;
+                    console.log(`Chat API: Extracted text from Vercel AI SDK format (TextUIPart array)`);
+                  } 
+                  // Handle single object format: {"type":"text","text":"content"}
+                  else if (parsed?.type === 'text' && 'text' in parsed) {
+                    parsedContent = parsed.text;
+                    console.log(`Chat API: Extracted text from Vercel AI SDK format (TextUIPart)`);
+                  }
+                  // Unknown format, use as-is
+                  else {
+                    parsedContent = assistantMessage.content;
+                    console.log(`Chat API: Unknown JSON format, using as-is`);
+                  }
+                } else {
+                  // Not JSON, use as-is
+                  parsedContent = assistantMessage.content;
+                }
+              } catch (e) {
+                // If parsing fails, use original content
+                parsedContent = assistantMessage.content;
+                console.warn(`Chat API: Failed to parse content as JSON:`, e);
               }
             } else {
-              console.warn(`Chat API: No assistant message found in streaming response`);
+              // For non-string content, convert to string
+              parsedContent = JSON.stringify(assistantMessage.content);
+            }
+            
+            // Log processed content
+            console.log(`Chat API: Processed content preview: ${typeof parsedContent === 'string' ? 
+              parsedContent.substring(0, 100) : JSON.stringify(parsedContent).substring(0, 100)}...`);
+            
+            // Save the assistant message to the gear - no duplication check needed
+            // since we've fixed the client to not save messages
+            try {
+              await gear.addMessage({
+                role: "assistant",
+                content: parsedContent
+              });
+              console.log(`Chat API: Successfully saved assistant response to gear ${gearId}`);
+            } catch (saveError) {
+              console.error(`Chat API: Failed to save assistant response:`, saveError);
             }
           } catch (finishError) {
             console.error(`Chat API: Error in onFinish handler:`, finishError);
