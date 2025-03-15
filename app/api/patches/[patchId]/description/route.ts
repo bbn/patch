@@ -27,7 +27,7 @@ export async function POST(
     const gearCache = new Map();
     
     // Function to get gear from cache or load it
-    const getGear = async (gearId) => {
+    const getGear = async (gearId: string) => {
       if (gearCache.has(gearId)) {
         return gearCache.get(gearId);
       }
@@ -53,8 +53,8 @@ export async function POST(
       .map(gear => {
         const messages = gear?.messages || [];
         // Get system and first user message for context on what the gear does
-        const systemMessage = messages.find(m => m.role === "system")?.content || "";
-        const userMessage = messages.find(m => m.role === "user")?.content || "";
+        const systemMessage = messages.find((m: { role: string; content?: string }) => m.role === "system")?.content || "";
+        const userMessage = messages.find((m: { role: string; content?: string }) => m.role === "user")?.content || "";
         
         return {
           id: gear?.id || "",

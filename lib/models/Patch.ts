@@ -275,7 +275,16 @@ export class Patch {
       try {
         console.log('Retrieving all patches directly from Firestore');
         const patchDataList = await getAllPatches();
-        return patchDataList.map((patchData: PatchData) => new Patch(patchData));
+        return patchDataList.map((patchData) => {
+          // Ensure the data has the required properties for PatchData
+          return new Patch({
+            id: patchData.id as string,
+            name: patchData.name as string,
+            nodes: patchData.nodes || [],
+            edges: patchData.edges || [],
+            ...(patchData as Partial<PatchData>)
+          });
+        });
       } catch (error) {
         console.error("Error fetching patches from Firestore:", error);
         return [];
@@ -288,7 +297,14 @@ export class Patch {
       const patchDataList = await getAllPatchesAdmin();
       
       for (const patchData of patchDataList) {
-        patches.push(new Patch(patchData as PatchData));
+        // Ensure the data has the required properties for PatchData
+        patches.push(new Patch({
+          id: patchData.id as string,
+          name: patchData.name as string,
+          nodes: patchData.nodes || [],
+          edges: patchData.edges || [],
+          ...(patchData as Partial<PatchData>)
+        }));
       }
       
       return patches;
@@ -479,7 +495,8 @@ export class Patch {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                outputUrls: [...(sourceNode.data.outputUrls || []), targetGearUrl]
+                // Get the outputUrls from gear rather than directly from data
+                outputUrls: [targetGearUrl] // Just add the new URL; the server will merge with existing ones
               })
             });
             
@@ -526,7 +543,7 @@ export class Patch {
     const gearsToUpdate = new Map(); // Map<gearId, Gear>
     
     // Get a source gear and start batch update if needed
-    const getGearForUpdate = async (gearId) => {
+    const getGearForUpdate = async (gearId: string) => {
       if (gearsToUpdate.has(gearId)) {
         return gearsToUpdate.get(gearId);
       }
@@ -694,7 +711,7 @@ export class Patch {
     const gearUpdates = new Map(); // Map<gearId, Gear>
     
     // Get a source gear and start batch update if needed
-    const getGearForUpdate = async (gearId) => {
+    const getGearForUpdate = async (gearId: string) => {
       if (gearUpdates.has(gearId)) {
         return gearUpdates.get(gearId);
       }

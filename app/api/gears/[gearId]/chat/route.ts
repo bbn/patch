@@ -74,9 +74,12 @@ export async function POST(
     // 1. Start with system prompt
     const systemPrompt = gear.systemPrompt();
     console.log(`Chat API: Using system prompt (${systemPrompt.length} chars)`);
+    // Define the allowed role types to help with type checking
+    type AllowedRole = 'system' | 'user' | 'assistant' | 'data';
+    
     const allMessages = [
       { role: 'system' as const, content: systemPrompt },
-    ];
+    ] as Array<{ role: AllowedRole, content: string }>;
     
     // 2. Add all messages from the gear's chat history EXCEPT the most recent user message
     // that we already added above at line 58
@@ -93,10 +96,18 @@ export async function POST(
     // If messages array from client is empty, use all chat messages
     if (!messages || messages.length === 0) {
       console.log(`Chat API: No messages from client, using all ${chatMessages.length} messages from chat history`);
-      allMessages.push(...chatMessages.map(msg => ({
-        role: msg.role as "system" | "user" | "assistant" | "data",
-        content: msg.content
-      })));
+      // Add messages with explicit type casting
+      for (const msg of chatMessages) {
+        const role = msg.role === 'system' ? 'system' as const : 
+                    msg.role === 'user' ? 'user' as const : 
+                    msg.role === 'assistant' ? 'assistant' as const : 
+                    'data' as const;
+        
+        allMessages.push({
+          role,
+          content: msg.content
+        });
+      }
     } else {
       // Otherwise, use all messages except the last one (if it matches the most recent user message)
       // This prevents duplicate messages when the client includes the latest user message
@@ -115,8 +126,14 @@ export async function POST(
           continue;
         }
         
+        // Properly type the role with const assertions
+        const role = chatMessages[i].role === 'system' ? 'system' as const : 
+                    chatMessages[i].role === 'user' ? 'user' as const : 
+                    chatMessages[i].role === 'assistant' ? 'assistant' as const : 
+                    'data' as const;
+        
         allMessages.push({
-          role: chatMessages[i].role as "system" | "user" | "assistant" | "data",
+          role,
           content: chatMessages[i].content
         });
       }
@@ -128,10 +145,18 @@ export async function POST(
         console.log(`Chat API: Client sent ${messages.length} messages, adding all but the last one`);
         // Add all client messages except the last user message (which we've already added to the gear)
         const additionalMessages = messages.slice(0, -1);
-        allMessages.push(...additionalMessages.map(msg => ({
-          role: msg.role as "system" | "user" | "assistant" | "data",
-          content: msg.content
-        })));
+        // Add each message individually with proper typing
+        for (const msg of additionalMessages) {
+          const role = msg.role === 'system' ? 'system' as const : 
+                      msg.role === 'user' ? 'user' as const : 
+                      msg.role === 'assistant' ? 'assistant' as const : 
+                      'data' as const;
+          
+          allMessages.push({
+            role,
+            content: msg.content
+          });
+        }
         console.log(`Chat API: Added ${additionalMessages.length} additional messages from client`);
       }
     }

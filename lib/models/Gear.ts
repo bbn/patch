@@ -55,12 +55,21 @@ export interface GearData {
   exampleInputs?: ExampleInput[];
   label?: string;
   log?: GearLogEntry[];
+  patchId?: string; // The ID of the patch this gear belongs to
+  nodeId?: string;  // The ID of the node in the patch this gear corresponds to
+  position?: { x: number; y: number }; // Position in the ReactFlow canvas
 }
 
 export class Gear {
-  private data: GearData;
+  // Changed to protected to allow access from subclasses but not directly from outside
+  protected _data: GearData;
   private chat: GearChat;
   private unsubscribe: (() => void) | null = null;
+  
+  // Add a getter for data to access it safely
+  get data(): GearData {
+    return { ...this._data };
+  }
   
   // Flag to control whether patch descriptions should be updated
   // Set to true during initial creation to prevent unnecessary updates
@@ -71,7 +80,7 @@ export class Gear {
   pendingChanges = false;
 
   constructor(data: Partial<GearData> & { id: string }) {
-    this.data = {
+    this._data = {
       id: data.id,
       outputUrls: data.outputUrls || [],
       messages: data.messages || [],
@@ -82,8 +91,11 @@ export class Gear {
       exampleInputs: data.exampleInputs || [],
       label: data.label || `Gear ${data.id.slice(0, 8)}`,
       log: data.log || [],
+      patchId: data.patchId,
+      nodeId: data.nodeId,
+      position: data.position,
     };
-    this.chat = new GearChat(this.data.messages, this.data.id);
+    this.chat = new GearChat(this._data.messages, this._data.id);
   }
 
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
@@ -181,19 +193,19 @@ export class Gear {
     }
 
     // Create a new subscription
-    const docRef = doc(db, 'gears', this.data.id);
+    const docRef = doc(db, 'gears', this._data.id);
     this.unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const updatedData = docSnap.data() as GearData;
         // Update the internal data
-        this.data = updatedData;
+        this._data = updatedData;
         // Recreate chat instance with updated messages
-        this.chat = new GearChat(this.data.messages, this.data.id);
+        this.chat = new GearChat(this._data.messages, this._data.id);
         // Notify the callback
         callback(this);
       }
     }, (error) => {
-      console.error(`Error in real-time updates for gear ${this.data.id}:`, error);
+      console.error(`Error in real-time updates for gear ${this._data.id}:`, error);
     });
 
     // Return the unsubscribe function
@@ -212,7 +224,13 @@ export class Gear {
       try {
         console.log('Retrieving all gears directly from Firestore');
         const gearDataList = await getAllGears();
-        return gearDataList.map((gearData: GearData) => new Gear(gearData));
+        return gearDataList.map((gearData) => {
+          // Ensure the data has the required properties for GearData
+          return new Gear({
+            id: gearData.id as string,
+            ...(gearData as Partial<GearData>)
+          });
+        });
       } catch (error) {
         console.error("Error fetching gears from Firestore:", error);
         return [];
@@ -225,7 +243,11 @@ export class Gear {
       const gearDataList = await getAllGearsAdmin();
       
       for (const gearData of gearDataList) {
-        gears.push(new Gear(gearData as GearData));
+        // Ensure the data has the required properties for GearData
+        gears.push(new Gear({
+          id: gearData.id as string,
+          ...(gearData as Partial<GearData>)
+        }));
       }
       
       return gears;
@@ -291,7 +313,7 @@ export class Gear {
   
   async save(): Promise<void> {
     // Ensure data is not null and has required fields
-    if (!this.data || !this.data.id) {
+    if (!this._data || !this._data.id) {
       console.error("Cannot save gear: data or id is missing");
       throw new Error("Cannot save gear: data or id is missing");
     }
@@ -300,51 +322,51 @@ export class Gear {
     // and don't actually save yet
     if (this.batchUpdates) {
       this.pendingChanges = true;
-      debugLog("GEAR-SAVE", `Deferring save of gear ${this.data.id} (batch mode)`);
+      debugLog("GEAR-SAVE", `Deferring save of gear ${this._data.id} (batch mode)`);
       return;
     }
     
-    this.data.updatedAt = Date.now();
+    this._data.updatedAt = Date.now();
     
     // Keep only critical logs for production, use debug logging for verbose output
-    console.log(`Saving gear ${this.data.id}`);
+    console.log(`Saving gear ${this._data.id}`);
     
     // Use conditional debug logging for verbose output
-    debugLog("GEAR-SAVE", `Saving gear ${this.data.id} with ${this.data.log?.length || 0} log entries`);
+    debugLog("GEAR-SAVE", `Saving gear ${this._data.id} with ${this._data.log?.length || 0} log entries`);
     
     // Debug log when saving with a label (only in debug mode)
-    if (this.data.label) {
-      debugLog("LABEL", `save() called with label = "${this.data.label}"`);
+    if (this._data.label) {
+      debugLog("LABEL", `save() called with label = "${this._data.label}"`);
     }
     
     if (typeof window !== 'undefined' && !this.inServerApiHandler) {
       // Client-side: Use direct Firestore instead of API
       // Skip if we're already inside a server API handler to avoid redundant saves
       try {
-        console.log(`Saving gear ${this.data.id} directly to Firestore`);
+        console.log(`Saving gear ${this._data.id} directly to Firestore`);
         
         // Make a clean copy of the data to ensure it's a plain object
-        const cleanData = JSON.parse(JSON.stringify(this.data));
+        const cleanData = JSON.parse(JSON.stringify(this._data));
         
         // Save directly to Firestore using client SDK
-        await saveGear(this.data.id, cleanData);
+        await saveGear(this._data.id, cleanData);
         
-        debugLog("LABEL", `Successfully saved gear directly to Firestore with label = "${this.data.label || 'none'}"`);
+        debugLog("LABEL", `Successfully saved gear directly to Firestore with label = "${this._data.label || 'none'}"`);
       } catch (error) {
-        console.error(`Error saving gear ${this.data.id} to Firestore:`, error);
+        console.error(`Error saving gear ${this._data.id} to Firestore:`, error);
       }
     } else {
       // Server-side: Use Firestore directly
       try {
-        console.log(`Saving gear ${this.data.id} to Firestore (server-side)`);
+        console.log(`Saving gear ${this._data.id} to Firestore (server-side)`);
         
         // Make a clean copy of the data to ensure it's a plain object
-        const cleanData = JSON.parse(JSON.stringify(this.data));
+        const cleanData = JSON.parse(JSON.stringify(this._data));
         
         // Save to Firestore using the Admin SDK
-        await saveGearAdmin(this.data.id, cleanData);
+        await saveGearAdmin(this._data.id, cleanData);
         
-        console.log(`Successfully saved gear ${this.data.id} to Firestore (server-side)`);
+        console.log(`Successfully saved gear ${this._data.id} to Firestore (server-side)`);
       } catch (error) {
         console.error(`Error saving to Firestore:`, error);
         throw error; // Rethrow to ensure errors are properly propagated
@@ -354,47 +376,47 @@ export class Gear {
 
   // Getters
   get id() {
-    return this.data.id;
+    return this._data.id;
   }
   get outputUrls() {
-    return this.data.outputUrls;
+    return this._data.outputUrls;
   }
   get messages() {
-    return this.data.messages;
+    return this._data.messages;
   }
   get createdAt() {
-    return this.data.createdAt;
+    return this._data.createdAt;
   }
   get updatedAt() {
-    return this.data.updatedAt;
+    return this._data.updatedAt;
   }
 
   get inputs() {
-    return this.data.inputs || {};
+    return this._data.inputs || {};
   }
 
   get output() {
-    return this.data.output;
+    return this._data.output;
   }
 
   get exampleInputs() {
-    return this.data.exampleInputs || [];
+    return this._data.exampleInputs || [];
   }
 
   get label() {
-    return this.data.label || `Gear ${this.data.id.slice(0, 8)}`;
+    return this._data.label || `Gear ${this._data.id.slice(0, 8)}`;
   }
   
   get log() {
-    return this.data.log || [];
+    return this._data.log || [];
   }
 
   async clearLog() {
     console.log(`Clearing log for gear ${this.id}`);
-    this.data.log = [];
+    this._data.log = [];
     
     // Debug log for verification
-    debugLog("LOG", `Log array length after clearing: ${this.data.log.length}`);
+    debugLog("LOG", `Log array length after clearing: ${this._data.log.length}`);
     
     // Save to persistent storage
     await this.save();
@@ -424,7 +446,7 @@ export class Gear {
   
   async setLog(logEntries: GearLogEntry[], skipSave = false) {
     console.log(`Setting log for gear ${this.id} with ${logEntries.length} entries`);
-    this.data.log = logEntries;
+    this._data.log = logEntries;
     if (!skipSave) {
       await this.save();
     }
@@ -435,14 +457,14 @@ export class Gear {
     debugLog("LABEL", `setLabel called with label: "${label}" (length: ${label.length}, type: ${typeof label})`);
     
     // Skip updates if label hasn't actually changed
-    if (this.data.label === label) {
+    if (this._data.label === label) {
       debugLog("LABEL", `Label unchanged, skipping update`);
       return;
     }
     
-    this.data.label = label;
+    this._data.label = label;
     await this.save();
-    debugLog("LABEL", `setLabel completed, current label: "${this.data.label}"`);
+    debugLog("LABEL", `setLabel completed, current label: "${this._data.label}"`);
     
     // Only update patch descriptions for meaningful label changes
     if (!label.startsWith("Gear ") && !this.skipDescriptionUpdates && !skipPatchUpdates) {
@@ -461,7 +483,7 @@ export class Gear {
   
   // Setters
   async setMessages(messages: Message[], skipPatchUpdates = false) {
-    this.data.messages = messages;
+    this._data.messages = messages;
     await this.save();
     
     // Updates to messages can change gear functionality, but we may want to batch updates
@@ -471,22 +493,22 @@ export class Gear {
   }
   
   async setOutputUrls(urls: string[], skipSave = false) {
-    this.data.outputUrls = urls;
+    this._data.outputUrls = urls;
     if (!skipSave) {
       await this.save();
     }
   }
   
   async setExampleInputs(examples: ExampleInput[], skipSave = false) {
-    this.data.exampleInputs = examples;
+    this._data.exampleInputs = examples;
     if (!skipSave) {
       await this.save();
     }
   }
 
   async addExampleInput(name: string, input: GearInput): Promise<ExampleInput> {
-    if (!this.data.exampleInputs) {
-      this.data.exampleInputs = [];
+    if (!this._data.exampleInputs) {
+      this._data.exampleInputs = [];
     }
     
     // Try to parse input as JSON if it's a string that looks like JSON
@@ -510,17 +532,17 @@ export class Gear {
       input: processedInput,
     };
     
-    this.data.exampleInputs.push(example);
+    this._data.exampleInputs.push(example);
     await this.save();
     
     // Sync with server
     if (typeof window !== 'undefined') {
       try {
-        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+        const updateResponse = await fetch(`/api/gears/${this._data.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            exampleInputs: this.data.exampleInputs
+            exampleInputs: this._data.exampleInputs
           }),
         });
         
@@ -536,11 +558,11 @@ export class Gear {
   }
 
   async updateExampleInput(id: string, updates: Partial<ExampleInput>): Promise<ExampleInput | null> {
-    if (!this.data.exampleInputs) {
+    if (!this._data.exampleInputs) {
       return null;
     }
     
-    const index = this.data.exampleInputs.findIndex(example => example.id === id);
+    const index = this._data.exampleInputs.findIndex(example => example.id === id);
     if (index === -1) {
       return null;
     }
@@ -561,8 +583,8 @@ export class Gear {
       }
     }
     
-    this.data.exampleInputs[index] = {
-      ...this.data.exampleInputs[index],
+    this._data.exampleInputs[index] = {
+      ...this._data.exampleInputs[index],
       ...updates
     };
     
@@ -571,11 +593,11 @@ export class Gear {
     // Sync with server
     if (typeof window !== 'undefined') {
       try {
-        const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+        const updateResponse = await fetch(`/api/gears/${this._data.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            exampleInputs: this.data.exampleInputs
+            exampleInputs: this._data.exampleInputs
           }),
         });
         
@@ -587,28 +609,28 @@ export class Gear {
       }
     }
     
-    return this.data.exampleInputs[index];
+    return this._data.exampleInputs[index];
   }
 
   async deleteExampleInput(id: string): Promise<boolean> {
-    if (!this.data.exampleInputs) {
+    if (!this._data.exampleInputs) {
       return false;
     }
     
-    const initialLength = this.data.exampleInputs.length;
-    this.data.exampleInputs = this.data.exampleInputs.filter(example => example.id !== id);
+    const initialLength = this._data.exampleInputs.length;
+    this._data.exampleInputs = this._data.exampleInputs.filter(example => example.id !== id);
     
-    if (this.data.exampleInputs.length !== initialLength) {
+    if (this._data.exampleInputs.length !== initialLength) {
       await this.save();
       
       // Sync with server
       if (typeof window !== 'undefined') {
         try {
-          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+          const updateResponse = await fetch(`/api/gears/${this._data.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              exampleInputs: this.data.exampleInputs
+              exampleInputs: this._data.exampleInputs
             }),
           });
           
@@ -627,11 +649,11 @@ export class Gear {
   }
 
   async processExampleInput(id: string): Promise<ExampleInput | null> {
-    if (!this.data.exampleInputs) {
+    if (!this._data.exampleInputs) {
       return null;
     }
     
-    const example = this.data.exampleInputs.find(ex => ex.id === id);
+    const example = this._data.exampleInputs.find(ex => ex.id === id);
     if (!example) {
       return null;
     }
@@ -642,7 +664,7 @@ export class Gear {
       if (typeof window !== 'undefined') {
         // In browser, use the API with forward=false and create_log=false
         try {
-          const response = await fetch(`/api/gears/${this.data.id}?forward=false&create_log=false`, {
+          const response = await fetch(`/api/gears/${this._data.id}?forward=false&create_log=false`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -681,11 +703,11 @@ export class Gear {
       // Sync with server
       if (typeof window !== 'undefined') {
         try {
-          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
+          const updateResponse = await fetch(`/api/gears/${this._data.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              exampleInputs: this.data.exampleInputs
+              exampleInputs: this._data.exampleInputs
             }),
           });
           
@@ -705,13 +727,13 @@ export class Gear {
   }
 
   async processAllExamples(): Promise<ExampleInput[]> {
-    if (!this.data.exampleInputs || this.data.exampleInputs.length === 0) {
+    if (!this._data.exampleInputs || this._data.exampleInputs.length === 0) {
       return [];
     }
     
     const results: ExampleInput[] = [];
     
-    for (const example of this.data.exampleInputs) {
+    for (const example of this._data.exampleInputs) {
       try {
         // Process each example individually with no_forward=true
         await this.processExampleInput(example.id);
@@ -726,7 +748,7 @@ export class Gear {
   }
 
   async addMessage({ role, content }: { role: Role; content: string }) {
-    console.log(`Gear.addMessage: Adding ${role} message to gear ${this.data.id}`);
+    console.log(`Gear.addMessage: Adding ${role} message to gear ${this._data.id}`);
     
     try {
       // Add message to chat object
@@ -735,8 +757,8 @@ export class Gear {
       
       // Note: we don't need to push to data.messages since the GearChat maintains the same reference
       // But let's log what we're going to save
-      console.log(`Gear.addMessage: Current messages array length: ${this.data.messages.length}`);
-      console.log(`Gear.addMessage: Last message role: ${this.data.messages[this.data.messages.length-1]?.role || 'none'}`);
+      console.log(`Gear.addMessage: Current messages array length: ${this._data.messages.length}`);
+      console.log(`Gear.addMessage: Last message role: ${this._data.messages[this._data.messages.length-1]?.role || 'none'}`);
       
       // Save to persistent storage - this will now intelligently handle server-side vs client-side
       // The updated save() method will skip client-side API calls if inServerApiHandler is true
@@ -753,9 +775,9 @@ export class Gear {
     }
 
     // Generate a new label if this completes a message exchange (user then assistant)
-    if (role === 'assistant' && this.data.messages.length >= 2) {
+    if (role === 'assistant' && this._data.messages.length >= 2) {
       debugLog("LABEL", `Detected assistant message following other messages`);
-      const previousMessage = this.data.messages[this.data.messages.length - 2];
+      const previousMessage = this._data.messages[this._data.messages.length - 2];
       debugLog("LABEL", `Previous message role: ${previousMessage.role}`);
       
       if (previousMessage.role === 'user') {
@@ -770,12 +792,12 @@ export class Gear {
         // Only run verification checks in debug mode
         if (isDebugLoggingEnabled()) {
           // Log current gear state after label generation
-          debugLog("LABEL", `After label generation, gear label = "${this.data.label}"`);
+          debugLog("LABEL", `After label generation, gear label = "${this._data.label}"`);
           
           // Get the saved gear to make sure the label was persisted
           if (typeof window !== 'undefined') {
             try {
-              const checkResponse = await fetch(`/api/gears/${this.data.id}`);
+              const checkResponse = await fetch(`/api/gears/${this._data.id}`);
               if (checkResponse.ok) {
                 const serverGear = await checkResponse.json();
                 debugLog("LABEL", `Server gear label after save: "${serverGear.label}"`);
@@ -789,7 +811,7 @@ export class Gear {
     }
     
     // If role is "system" or "user" and we have example inputs, process them all when instructions change
-    if ((role === "system" || role === "user") && this.data.exampleInputs && this.data.exampleInputs.length > 0) {
+    if ((role === "system" || role === "user") && this._data.exampleInputs && this._data.exampleInputs.length > 0) {
       // Process all examples with the updated instructions
       await this.processAllExamples();
     }
@@ -798,7 +820,7 @@ export class Gear {
   async generateLabel(): Promise<string> {
     try {
       console.log(`Generating label for gear ${this.id}`);
-      debugLog("LABEL", `Current messages for label generation:`, this.data.messages);
+      debugLog("LABEL", `Current messages for label generation:`, this._data.messages);
       
       // Generate a concise label based on the gear's messages
       const prompt = `Based on this conversation, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
@@ -809,7 +831,7 @@ Example conversations and labels:
 - Conversation about extracting key information from emails → "Email Extractor"
 
 Here is the conversation:
-${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
+${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 `;
 
       debugLog("LABEL", `Sending prompt for label generation: ${prompt.substring(0, 200)}...`);
@@ -852,11 +874,11 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       console.log(`Generated label: "${cleanedLabel}"`);
       
       // Update the label
-      this.data.label = cleanedLabel;
-      debugLog("LABEL", `Set gear.data.label = "${this.data.label}"`);
+      this._data.label = cleanedLabel;
+      debugLog("LABEL", `Set gear.data.label = "${this._data.label}"`);
       
       await this.save();
-      debugLog("LABEL", `Saved gear with new label "${this.data.label}"`);
+      debugLog("LABEL", `Saved gear with new label "${this._data.label}"`);
       
       return cleanedLabel;
     } catch (error) {
@@ -973,8 +995,8 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
       const patches = await response.json();
       
       // Find patches containing this gear by ID more efficiently
-      const batchPromises = [];
-      const patchesToUpdate = [];
+      const batchPromises: Promise<void>[] = [];
+      const patchesToUpdate: string[] = [];
       
       for (const patchData of patches) {
         batchPromises.push(
@@ -1024,18 +1046,18 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
   async processWithoutLogging(source: string, input: GearInput): Promise<GearOutput> {
     // Store the input in inputs dictionary
-    if (!this.data.inputs) {
-      this.data.inputs = {};
+    if (!this._data.inputs) {
+      this._data.inputs = {};
     }
-    this.data.inputs[source] = input;
-    this.data.updatedAt = Date.now();
+    this._data.inputs[source] = input;
+    this._data.updatedAt = Date.now();
     await this.save();
     
     // Process the input using LLM
     const output = await this.processWithLLM(input);
     
     // Store the output
-    this.data.output = output;
+    this._data.output = output;
     await this.save();
     
     return output;
@@ -1049,10 +1071,10 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
   async addOutputUrl(url: string, skipSave = false) {
     // Check if URL already exists to avoid unnecessary updates
-    const urlExists = this.data.outputUrls.includes(url);
+    const urlExists = this._data.outputUrls.includes(url);
     if (!urlExists) {
       console.log(`Adding URL ${url} to gear ${this.id}`);
-      this.data.outputUrls.push(url);
+      this._data.outputUrls.push(url);
       if (!skipSave) {
         await this.save();
       }
@@ -1063,23 +1085,23 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
 
   async removeOutputUrl(url: string, skipSave = false) {
     // Check if URL actually exists to avoid unnecessary updates
-    const initialLength = this.data.outputUrls.length;
-    this.data.outputUrls = this.data.outputUrls.filter((u) => u !== url);
+    const initialLength = this._data.outputUrls.length;
+    this._data.outputUrls = this._data.outputUrls.filter((u) => u !== url);
     
     // Only save if there was an actual change
-    if (initialLength !== this.data.outputUrls.length && !skipSave) {
+    if (initialLength !== this._data.outputUrls.length && !skipSave) {
       console.log(`Removed URL ${url} from gear ${this.id}`);
       await this.save();
     }
     
-    return initialLength !== this.data.outputUrls.length;
+    return initialLength !== this._data.outputUrls.length;
   }
 
   systemPrompt(): string {
     const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
 
     Here are this Gear's instructional messages:
-    ${JSON.stringify(this.data.messages, null, 2)}
+    ${JSON.stringify(this._data.messages, null, 2)}
 
     Please process the input data and generate an output according to the instruction.`;
 
@@ -1094,7 +1116,7 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     }
     
     // Otherwise, use all inputs from the inputs dictionary
-    const allInputs = this.data.inputs || {};
+    const allInputs = this._data.inputs || {};
     const formattedInputs = JSON.stringify(allInputs, null, 2);
     return `Here are the input data sources: ${formattedInputs}`;
   }
@@ -1107,14 +1129,14 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
         // For backward compatibility, if input is provided directly,
         // process just that input directly
         output = await this.processWithLLM(input);
-        this.data.output = output;
+        this._data.output = output;
         await this.save();
         return output;
       }
       
       // Process all inputs from the inputs dictionary
       output = await this.processWithLLM();
-      this.data.output = output;
+      this._data.output = output;
       await this.save();
       return output;
     } catch (error) {
