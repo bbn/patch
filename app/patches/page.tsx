@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Patch } from "@/lib/models/Patch";
+import { Patch, PatchData } from "@/lib/models/Patch";
+import { collection, getDocs, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,25 +35,57 @@ export default function PatchesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Subscribe to real-time updates from Firestore
-    const unsubscribe = Patch.subscribeToAll((newPatches) => {
-      console.log(`Real-time update: Received ${newPatches.length} patches`);
-      
-      // Convert patches to summary format
-      const patchSummaries = newPatches.map(patch => ({
-        id: patch.id,
-        name: patch.name,
-        description: patch.description,
-        updatedAt: patch.updatedAt,
-        nodeCount: patch.nodes.length
-      }));
+    // Load patches directly from Firestore client-side
+    const fetchPatches = async () => {
+      try {
+        // Use direct Firestore client without going through API
+        const patchesCollection = collection(db, 'patches');
+        const snapshot = await getDocs(patchesCollection);
+        
+        const newPatches = snapshot.docs.map(doc => {
+          const data = doc.data() as PatchData;
+          return {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+            updatedAt: data.updatedAt,
+            nodeCount: data.nodes?.length || 0
+          };
+        });
+        
+        // Sort patches by updatedAt in reverse chronological order
+        const sortedPatches = [...newPatches].sort((a, b) => b.updatedAt - a.updatedAt);
+        
+        // Update state with fresh data
+        setPatches(sortedPatches);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching patches:", error);
+        setLoading(false);
+      }
+    };
+    
+    fetchPatches();
+    
+    // Set up real-time listener for changes
+    const patchesCollection = collection(db, 'patches');
+    const unsubscribe = onSnapshot(patchesCollection, (snapshot) => {
+      const newPatches = snapshot.docs.map(doc => {
+        const data = doc.data() as PatchData;
+        return {
+          id: data.id,
+          name: data.name,
+          description: data.description,
+          updatedAt: data.updatedAt,
+          nodeCount: data.nodes?.length || 0
+        };
+      });
       
       // Sort patches by updatedAt in reverse chronological order
-      const sortedPatches = [...patchSummaries].sort((a, b) => b.updatedAt - a.updatedAt);
+      const sortedPatches = [...newPatches].sort((a, b) => b.updatedAt - a.updatedAt);
       
       // Update state with fresh data
       setPatches(sortedPatches);
-      setLoading(false);
     });
 
     // Clean up subscription when component unmounts
