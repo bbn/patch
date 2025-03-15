@@ -802,8 +802,29 @@ export class Patch {
     if (edgesChanged && this.data.nodes.length > 1) {
       await this.generateDescription();
     } else {
-      // Just save the visual changes without description update
-      await this.save();
+      // Just save the visual changes
+      // If we're on the client side, use direct Firebase save instead of going through API
+      this.data.updatedAt = Date.now();
+      
+      if (typeof window !== 'undefined') {
+        try {
+          // Client-side: Save directly to Firestore
+          await savePatch(this.data.id, this.data);
+          console.log(`Saved patch directly to Firestore (client-side): ${this.data.id}`);
+        } catch (error) {
+          console.error(`Error saving patch directly to Firestore: ${this.data.id}`, error);
+          
+          // Fallback to API if direct save fails
+          await fetch(`/api/patches/${this.data.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.data),
+          });
+        }
+      } else {
+        // Server-side: Use Firebase Admin SDK
+        await this.save();
+      }
     }
   }
   

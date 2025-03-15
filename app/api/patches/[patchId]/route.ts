@@ -74,6 +74,7 @@ export async function PUT(
       }
       
       if (body.nodes) {
+        // updateFromReactFlow will handle saving the patch, so we don't need to call save() again
         await patch.updateFromReactFlow({
           nodes: body.nodes,
           edges: body.edges || []
@@ -82,10 +83,12 @@ export async function PUT(
         // Handle explicit request to regenerate description
         console.log(`Regenerating description for patch ${patchId} via PUT request`);
         await patch.generateDescription();
+        // Still need to save for description-only updates
+        await patch.save();
+      } else {
+        // Save the patch if any other fields were updated but no nodes/description change
+        await patch.save();
       }
-      
-      // Save the patch if any fields were updated
-      await patch.save();
     }
     
     return Response.json({

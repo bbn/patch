@@ -1338,6 +1338,7 @@ export default function PatchPage() {
           console.log(`Saving patch data with ${nodes.length} nodes and ${edges.length} edges`);
           
           // Update the patch with the current ReactFlow data
+          // Only call updateFromReactFlow which will handle saving
           await currentPatch.updateFromReactFlow({
             nodes,
             edges
