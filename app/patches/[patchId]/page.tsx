@@ -1284,8 +1284,8 @@ export default function PatchPage() {
         <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
           <div className="mb-2 py-2 flex justify-between items-start">
             <div>
-              <h3 className="text-lg font-semibold truncate max-w-full" title={nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
-                {nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
+              <h3 className="text-lg font-semibold truncate max-w-full" title={selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
+                {selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
               </h3>
               <p className="text-xs text-gray-500 truncate">
                 ID: {nodes.find(n => n.id === selectedNode)?.data?.gearId}
