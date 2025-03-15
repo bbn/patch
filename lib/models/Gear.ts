@@ -139,17 +139,18 @@ export class Gear {
 
   static async findById(id: string): Promise<Gear | null> {
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       try {
-        const response = await fetch(`/api/gears/${id}`);
-        if (!response.ok) {
-          return null;
-        }
+        console.log(`Retrieving gear ${id} directly from Firestore`);
+        const gearData = await getGear<GearData>(id);
         
-        const gearData = await response.json();
-        return new Gear(gearData);
+        if (gearData) {
+          console.log(`Found gear ${id} in Firestore`);
+          return new Gear(gearData);
+        }
+        return null;
       } catch (error) {
-        console.error(`Error fetching gear ${id}:`, error);
+        console.error(`Error fetching gear ${id} from Firestore:`, error);
         return null;
       }
     } else {
@@ -207,17 +208,13 @@ export class Gear {
   // Get all gears from the store
   static async findAll(): Promise<Gear[]> {
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       try {
-        const response = await fetch('/api/gears');
-        if (!response.ok) {
-          return [];
-        }
-        
-        const gearDataList = await response.json();
+        console.log('Retrieving all gears directly from Firestore');
+        const gearDataList = await getAllGears();
         return gearDataList.map((gearData: GearData) => new Gear(gearData));
       } catch (error) {
-        console.error("Error fetching gears:", error);
+        console.error("Error fetching gears from Firestore:", error);
         return [];
       }
     } else {
@@ -321,43 +318,20 @@ export class Gear {
     }
     
     if (typeof window !== 'undefined' && !this.inServerApiHandler) {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       // Skip if we're already inside a server API handler to avoid redundant saves
       try {
-        // Check if the gear already exists
-        const checkResponse = await fetch(`/api/gears/${this.data.id}`);
+        console.log(`Saving gear ${this.data.id} directly to Firestore`);
         
-        if (checkResponse.ok) {
-          // Update existing gear
-          debugLog("LABEL", `Updating existing gear, data has label = "${this.data.label || 'none'}"`);
-          
-          const updateResponse = await fetch(`/api/gears/${this.data.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.data),
-          });
-          
-          if (!updateResponse.ok) {
-            console.warn(`Failed to update gear ${this.data.id}:`, await updateResponse.text());
-          } else {
-            debugLog("LABEL", `Successfully updated gear with new data`);
-          }
-        } else {
-          // Create new gear
-          debugLog("LABEL", `Creating new gear, data has label = "${this.data.label || 'none'}"`);
-          
-          const createResponse = await fetch('/api/gears', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.data),
-          });
-          
-          if (!createResponse.ok) {
-            console.warn(`Failed to create gear ${this.data.id}:`, await createResponse.text());
-          }
-        }
+        // Make a clean copy of the data to ensure it's a plain object
+        const cleanData = JSON.parse(JSON.stringify(this.data));
+        
+        // Save directly to Firestore using client SDK
+        await saveGear(this.data.id, cleanData);
+        
+        debugLog("LABEL", `Successfully saved gear directly to Firestore with label = "${this.data.label || 'none'}"`);
       } catch (error) {
-        console.error(`Error saving gear ${this.data.id}:`, error);
+        console.error(`Error saving gear ${this.data.id} to Firestore:`, error);
       }
     } else {
       // Server-side: Use Firestore directly

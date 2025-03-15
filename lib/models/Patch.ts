@@ -171,17 +171,18 @@ export class Patch {
 
   static async findById(id: string): Promise<Patch | null> {
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       try {
-        const response = await fetch(`/api/patches/${id}`);
-        if (!response.ok) {
-          return null;
-        }
+        console.log(`Retrieving patch ${id} directly from Firestore`);
+        const patchData = await getPatch<PatchData>(id);
         
-        const patchData = await response.json();
-        return new Patch(patchData);
+        if (patchData) {
+          console.log(`Found patch ${id} in Firestore`);
+          return new Patch(patchData);
+        }
+        return null;
       } catch (error) {
-        console.error(`Error fetching patch ${id}:`, error);
+        console.error(`Error fetching patch ${id} from Firestore:`, error);
         return null;
       }
     } else {
@@ -270,17 +271,13 @@ export class Patch {
   // Get all patches from the store
   static async findAll(): Promise<Patch[]> {
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       try {
-        const response = await fetch('/api/patches');
-        if (!response.ok) {
-          return [];
-        }
-        
-        const patchDataList = await response.json();
+        console.log('Retrieving all patches directly from Firestore');
+        const patchDataList = await getAllPatches();
         return patchDataList.map((patchData: PatchData) => new Patch(patchData));
       } catch (error) {
-        console.error("Error fetching patches:", error);
+        console.error("Error fetching patches from Firestore:", error);
         return [];
       }
     } else {
@@ -326,36 +323,13 @@ export class Patch {
     this.data.updatedAt = Date.now();
     
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use direct Firestore instead of API
       try {
-        // Check if the patch already exists
-        const checkResponse = await fetch(`/api/patches/${this.data.id}`);
-        
-        if (checkResponse.ok) {
-          // Update existing patch
-          const updateResponse = await fetch(`/api/patches/${this.data.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.data),
-          });
-          
-          if (!updateResponse.ok) {
-            console.warn(`Failed to update patch ${this.data.id}:`, await updateResponse.text());
-          }
-        } else {
-          // Create new patch
-          const createResponse = await fetch('/api/patches', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.data),
-          });
-          
-          if (!createResponse.ok) {
-            console.warn(`Failed to create patch ${this.data.id}:`, await createResponse.text());
-          }
-        }
+        console.log(`Saving patch ${this.data.id} directly to Firestore`);
+        await savePatch(this.data.id, this.data);
+        console.log(`Successfully saved patch ${this.data.id} to Firestore`);
       } catch (error) {
-        console.error(`Error saving patch ${this.data.id}:`, error);
+        console.error(`Error saving patch ${this.data.id} to Firestore:`, error);
       }
     } else {
       // Server-side: Use Firebase Admin SDK

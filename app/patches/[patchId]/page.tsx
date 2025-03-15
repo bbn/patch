@@ -183,19 +183,13 @@ export default function PatchPage() {
         currentPatch.name = patchName;
         await currentPatch.save();
       } else {
-        // Update via API if no current patch
-        const response = await fetch(`/api/patches/${patchId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: patchName
-          })
+        // If no current patch, create a minimal one and save directly to Firestore
+        console.log(`No current patch object, creating a new one for ${patchId}`);
+        const newPatch = await Patch.create({
+          id: patchId,
+          name: patchName
         });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Failed to update patch name:', errorText);
-        }
+        console.log(`Created and saved new patch for ${patchId}`);
       }
 
       // Data is saved via model or API
@@ -506,62 +500,36 @@ export default function PatchPage() {
         }
       ];
       
-      // Create gear on the server first via API - this is critical
-      console.log(`Creating gear ${gearId} on server with patchId ${patchId} and nodeId ${nodeId}...`);
-      const createResponse = await fetch('/api/gears', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Create gear directly using the Gear model which will save to Firestore
+      console.log(`Creating gear ${gearId} with patchId ${patchId} and nodeId ${nodeId}...`);
+      
+      let gear;
+      try {
+        // Create the gear directly to Firestore
+        gear = await Gear.create({
           id: gearId,
-          patchId: patchId,  // Add patchId parameter
-          nodeId: nodeId,    // Add nodeId parameter
-          position: position, // Add position for node placement
+          patchId: patchId,
+          nodeId: nodeId,
+          position: position,
           messages: initialMessages.map(msg => ({
             ...msg,
             role: msg.role as "user" | "assistant" | "system"
-          }))
-        }),
-      });
-      
-      // Handle potential error cases with more grace
-      if (!createResponse.ok) {
-        if (createResponse.status === 409) {
-          // If gear already exists, that's fine - we'll just use it
-          console.log(`Gear ${gearId} already exists on server, continuing...`);
-        } else {
-          throw new Error(`Failed to create gear on server: ${await createResponse.text()}`);
-        }
-      } else {
-        console.log(`Gear ${gearId} created on server successfully`);
-      }
-      
-      // Verify gear exists on server before proceeding
-      const verifyResponse = await fetch(`/api/gears/${gearId}`);
-      if (!verifyResponse.ok) {
-        console.log(`Warning: Created gear ${gearId} but can't fetch it`);
-        // Try once more to create it
-        await fetch('/api/gears', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: gearId,
-            patchId: patchId,  // Add patchId parameter
-            nodeId: nodeId,    // Add nodeId parameter
-            position: position, // Add position for node placement
-            messages: initialMessages
-          }),
+          })),
         });
+        
+        console.log(`Gear ${gearId} created successfully in Firestore`);
+      } catch (error) {
+        // If there was an error, check if the gear already exists
+        console.log(`Error creating gear ${gearId}, checking if it exists:`, error);
+        
+        gear = await Gear.findById(gearId);
+        if (gear) {
+          console.log(`Gear ${gearId} already exists in Firestore, continuing...`);
+        } else {
+          console.error(`Failed to create or find gear ${gearId}`);
+          throw error;
+        }
       }
-      
-      // Create local representation only after server confirms creation
-      console.log(`Creating local representation of gear ${gearId}`);
-      const gear = await Gear.create({
-        id: gearId,
-        messages: initialMessages.map(msg => ({
-          ...msg,
-          role: msg.role as "user" | "assistant" | "system"
-        })),
-      });
       
       // Create a node representation with the same unique ID base
       // Include the required label in the node data to satisfy TypeScript
@@ -652,153 +620,77 @@ export default function PatchPage() {
     console.log(`Node clicked, loading gear: ${gearId}`);
     
     try {
-      // First check if gear exists on the server
-      const serverResponse = await fetch(`/api/gears/${gearId}`);
+      // First check if gear exists in Firestore
+      let gear = await Gear.findById(gearId as string);
       let serverGear = null;
       
-      if (serverResponse.ok) {
-        console.log(`Gear ${gearId} found on server`);
-        serverGear = await serverResponse.json();
+      if (gear) {
+        console.log(`Gear ${gearId} found in Firestore`);
+        serverGear = gear.data; // Use the gear data directly
         
-        // Log the label found on the server
-        console.log(`Server returned label: "${serverGear.label}" for gear ${gearId}`);
+        // Log the label found in Firestore
+        console.log(`Firestore returned label: "${serverGear.label}" for gear ${gearId}`);
         
-        // Preserve the label from the node if the server returns a generic label
+        // Preserve the label from the node if Firestore returns a generic label
         const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
         const serverLabel = typeof serverGear.label === 'string' ? serverGear.label : '';
         const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
         
         if (serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`) && 
             nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`)) {
-          console.log(`Server label appears generic, preserving node label: "${nodeLabel}"`);
+          console.log(`Firestore label appears generic, preserving node label: "${nodeLabel}"`);
           serverGear.label = nodeLabel;
+          // Update the label in Firestore
+          await gear.setLabel(nodeLabel);
         }
       } else {
-        console.log(`Gear ${gearId} not found on server, status: ${serverResponse.status}`);
+        console.log(`Gear ${gearId} not found in Firestore`);
         
-        // Check again with the 'no-cache' option
-        console.log(`Retrying gear ${gearId} with no-cache`);
-        const retryResponse = await fetch(`/api/gears/${gearId}`, {
-          cache: 'no-store',
-          headers: { 'Pragma': 'no-cache' }
-        });
-        
-        if (retryResponse.ok) {
-          console.log(`Second attempt: Gear ${gearId} found on server`);
-          serverGear = await retryResponse.json();
-        } else {
-          // Only try to create if second check also fails
-          console.log(`Creating gear ${gearId} on server`);
-          try {
-            const createResponse = await fetch('/api/gears', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: gearId,
-                messages: [
-                  {
-                    role: "system" as const, 
-                    content: "You are a Gear that processes inputs and produces outputs. You can be configured with instructions."
-                  }
-                ]
-              }),
-            });
-            
-            if (createResponse.ok) {
-              console.log(`Successfully created gear ${gearId} on server`);
-              const verifyResponse = await fetch(`/api/gears/${gearId}`);
-              if (verifyResponse.ok) {
-                serverGear = await verifyResponse.json();
+        // Create a new gear directly in Firestore
+        console.log(`Creating gear ${gearId} in Firestore`);
+        try {
+          gear = await Gear.create({
+            id: gearId as string,
+            messages: [
+              {
+                role: "system" as const, 
+                content: "You are a Gear that processes inputs and produces outputs. You can be configured with instructions."
               }
-            } else {
-              // Handle the 409 conflict specifically
-              if (createResponse.status === 409) {
-                console.log(`Gear ${gearId} already exists, fetching it instead`);
-                const existingResponse = await fetch(`/api/gears/${gearId}`);
-                if (existingResponse.ok) {
-                  serverGear = await existingResponse.json();
-                }
-              } else {
-                console.warn(`Failed to create gear ${gearId} on server:`, await createResponse.text());
-              }
-            }
-          } catch (createError) {
-            console.warn(`Error while creating/fetching gear ${gearId}:`, createError);
-          }
+            ]
+          });
+          
+          console.log(`Successfully created gear ${gearId} in Firestore`);
+          serverGear = gear.data;
+        } catch (createError) {
+          console.warn(`Error creating gear ${gearId} in Firestore:`, createError);
         }
       }
       
-      // Find or create the gear locally
-      let gear = await Gear.findById(gearId as string);
-      
+      // Gear is already found or created, use it directly
       if (gear) {
-        console.log(`Gear ${gearId} found locally`);
+        console.log(`Using gear ${gearId} from Firestore`);
         
         // Preserve the current node label if it's meaningful (not a generic one)
         const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
         const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
         const gearLabel = typeof gear.label === 'string' ? gear.label : '';
         
-        if (nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`)) {
-          console.log(`Local gear has label "${gearLabel}", node has label "${nodeLabel}"`);
-          
-          // If the local gear has a generic label but the node has a custom one, update the gear
-          if (gearLabel.startsWith(`Gear ${gearIdPrefix}`)) {
-            console.log(`Setting local gear label to node label: "${nodeLabel}"`);
-            await gear.setLabel(nodeLabel);
-          }
+        if (nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`) && 
+            gearLabel && gearLabel.startsWith(`Gear ${gearIdPrefix}`)) {
+          console.log(`Setting gear label to node label: "${nodeLabel}"`);
+          await gear.setLabel(nodeLabel);
         }
         
         setSelectedGear(gear);
         setGearMessages(gear.messages);
-        setExampleInputs(gear.exampleInputs);
+        setExampleInputs(gear.exampleInputs || []);
         setLogEntries(gear.log || []);
-        
-        // If we also have server data, make sure they're in sync
-        if (serverGear) {
-          // If server has newer/more messages, update local
-          if (serverGear.messages?.length > gear.messages.length) {
-            console.log(`Updating local gear ${gearId} with server data (more messages)`);
-            await gear.setMessages(serverGear.messages);
-            await gear.save();
-            setGearMessages(gear.messages);
-          }
-          
-          // Get log entries from server if available
-          if (serverGear.log) {
-            setLogEntries(serverGear.log);
-          }
-          
-          // Update server if we have a better label
-          const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
-          const gearLabel = typeof gear.label === 'string' ? gear.label : '';
-          const serverLabel = serverGear.label && typeof serverGear.label === 'string' ? serverGear.label : '';
-          
-          if (gearLabel && !gearLabel.startsWith(`Gear ${gearIdPrefix}`) && 
-              serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`)) {
-            console.log(`Updating server with better label: "${gearLabel}"`);
-            
-            try {
-              const updateResponse = await fetch(`/api/gears/${gearId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ label: gearLabel })
-              });
-              
-              if (updateResponse.ok) {
-                console.log(`Successfully updated server label to "${gearLabel}"`);
-              }
-            } catch (error) {
-              console.warn(`Failed to update server label: ${error}`);
-            }
-          }
-        }
         
         // Subscribe to real-time updates for this gear
         const unsubscribe = gear.subscribeToUpdates((updatedGear) => {
           setSelectedGear(updatedGear);
           setGearMessages(updatedGear.messages);
-          setExampleInputs(updatedGear.exampleInputs);
+          setExampleInputs(updatedGear.exampleInputs || []);
           setLogEntries(updatedGear.log || []);
           
           // We no longer need to update labels in UI and patch - GearNode does that
@@ -807,50 +699,12 @@ export default function PatchPage() {
         });
         
         setUnsubscribeGear(() => unsubscribe);
-      } else if (serverGear) {
-        // No local gear but we have server data
-        console.log(`Creating local gear ${gearId} from server data`);
-        
-        // Check if we should use the node's label instead of server's generic label
-        const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
-        const gearIdPrefix = typeof gearId === 'string' ? gearId.slice(0, 8) : '';
-        const serverLabel = serverGear.label && typeof serverGear.label === 'string' ? serverGear.label : '';
-        
-        if (nodeLabel && !nodeLabel.startsWith(`Gear ${gearIdPrefix}`) &&
-            serverLabel && serverLabel.startsWith(`Gear ${gearIdPrefix}`)) {
-          console.log(`Using node's label "${nodeLabel}" instead of server's generic label`);
-          serverGear.label = nodeLabel;
-        }
-        
-        gear = await Gear.create({
-          id: gearId as string,
-          messages: serverGear.messages || [],
-          exampleInputs: serverGear.exampleInputs || [],
-          outputUrls: serverGear.outputUrls || [],
-          log: serverGear.log || [],
-          label: serverGear.label
-        });
-        
-        setSelectedGear(gear);
-        setGearMessages(gear.messages);
-        setExampleInputs(gear.exampleInputs);
-        setLogEntries(gear.log || []);
-        
-        // Subscribe to real-time updates
-        const unsubscribe = gear.subscribeToUpdates((updatedGear) => {
-          setSelectedGear(updatedGear);
-          setGearMessages(updatedGear.messages);
-          setExampleInputs(updatedGear.exampleInputs);
-          setLogEntries(updatedGear.log || []);
-          
-          // We no longer need to update node labels - the GearNode gets label directly from Firestore
-          console.log(`Subscription update (server gear): received updated gear with label="${updatedGear.label}"`);
-        });
-        
-        setUnsubscribeGear(() => unsubscribe);
       } else {
-        // No gear found anywhere
-        console.log(`No gear ${gearId} found anywhere, creating new`);
+        // This should never happen as we always create a gear above if it doesn't exist
+        console.error(`No gear ${gearId} found or created, this should not happen`);
+        
+        // Create a new gear as fallback
+        console.log(`Creating fallback gear ${gearId}`);
         
         // Use current node label if it's meaningful
         const nodeLabel = currentNodeData && typeof currentNodeData.label === 'string' ? currentNodeData.label : '';
@@ -860,7 +714,7 @@ export default function PatchPage() {
           ? nodeLabel
           : undefined; // Use default label from Gear constructor
         
-        gear = await Gear.create({
+        const fallbackGear = await Gear.create({
           id: gearId as string,
           messages: [
             {
@@ -871,20 +725,20 @@ export default function PatchPage() {
           label: initialLabel
         });
         
-        setSelectedGear(gear);
-        setGearMessages(gear.messages);
+        setSelectedGear(fallbackGear);
+        setGearMessages(fallbackGear.messages);
         setExampleInputs([]);
         setLogEntries([]);
         
         // Subscribe to real-time updates
-        const unsubscribe = gear.subscribeToUpdates((updatedGear) => {
+        const unsubscribe = fallbackGear.subscribeToUpdates((updatedGear) => {
           setSelectedGear(updatedGear);
           setGearMessages(updatedGear.messages);
-          setExampleInputs(updatedGear.exampleInputs);
+          setExampleInputs(updatedGear.exampleInputs || []);
           setLogEntries(updatedGear.log || []);
           
           // We no longer need to update node labels - the GearNode gets label directly from Firestore
-          console.log(`Subscription update (new gear): received updated gear with label="${updatedGear.label}"`);
+          console.log(`Subscription update (fallback gear): received updated gear with label="${updatedGear.label}"`);
         });
         
         setUnsubscribeGear(() => unsubscribe);
