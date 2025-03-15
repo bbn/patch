@@ -105,8 +105,12 @@ export async function POST(req: Request) {
     
     console.log(`Creating gear with data:`, JSON.stringify(gearData, null, 2));
     
-    // Create the gear
+    // Create the gear using a single database operation
+    // This will directly save to database, no batching needed
     const gear = await Gear.create(gearData);
+    
+    // Double-check to ensure the gear is properly saved
+    console.log(`Saving gear ${gearData.id} to Firestore (gear create)`);
     
     // If patchId and nodeId provided, add the gear to the patch directly
     // without triggering separate description update
@@ -125,8 +129,12 @@ export async function POST(req: Request) {
       // Add node to patch without saving yet
       patch.nodes.push(newNode);
       
-      // Generate description in a single operation
-      if (patch.nodes.length > 0) {
+      // Skip description generation for empty gears with default label
+      // This avoids unnecessary API calls when a new standard gear is added
+      const isDefaultGear = gear.label.startsWith("Gear") && gear.messages.length <= 3;
+      
+      // Only generate description for non-default gears or if explicitly requested
+      if (!isDefaultGear && patch.nodes.length > 0) {
         await patch.generateDescription();
       }
       

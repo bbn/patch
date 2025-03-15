@@ -399,13 +399,7 @@ export default function PatchPage() {
         // Safely update edges state - this is where the error might be happening
         setEdges(prevEdges => {
           try {
-            // Log the edges and nodes to verify state
-            console.log('Previous edges:', prevEdges);
-            console.log('Current nodes:', nodes);
-
             // Create a connection with explicit type
-            // Use the connection's sourceHandle and targetHandle as is
-            // Don't add default values - let ReactFlow handle this
             const typedConnection = {
               ...connection,
               type: 'default'
@@ -420,7 +414,6 @@ export default function PatchPage() {
               type: 'default'
             }));
             
-            console.log('New edges after adding:', processedEdges);
             return processedEdges;
           } catch (e) {
             console.error("Error adding edge:", e);
@@ -447,7 +440,26 @@ export default function PatchPage() {
               // Omit sourceHandle and targetHandle entirely
             };
             
-            await patch.addEdge(patchEdge);
+            // Disable automatic description updates temporarily
+            // We'll defer the description update until all operations are complete
+            if (patch.generateDescription) {
+              const originalGenerateDescription = patch.generateDescription;
+              patch.generateDescription = async () => patch.description;
+              
+              // Add the edge and handle connections in one batch
+              await patch.addEdge(patchEdge);
+              
+              // Restore the original method
+              patch.generateDescription = originalGenerateDescription;
+              
+              // Generate description once after all operations complete
+              if (patch.nodes.length > 1) {
+                await patch.generateDescription();
+              }
+            } else {
+              // Fallback if we can't patch the method
+              await patch.addEdge(patchEdge);
+            }
           }
         }
       } catch (error) {

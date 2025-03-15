@@ -23,8 +23,28 @@ export async function POST(
     
     console.log(`Description API: Found patch with ${patch.nodes.length} nodes and ${patch.edges.length} edges`);
 
-    // Get the Gears in this patch to understand its functionality
-    const gearPromises = patch.nodes.map(node => Gear.findById(node.data.gearId));
+    // Cache for gears to avoid loading same gear multiple times
+    const gearCache = new Map();
+    
+    // Function to get gear from cache or load it
+    const getGear = async (gearId) => {
+      if (gearCache.has(gearId)) {
+        return gearCache.get(gearId);
+      }
+      
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        gearCache.set(gearId, gear);
+      }
+      return gear;
+    };
+    
+    // Get unique gear IDs to avoid duplicates
+    const uniqueGearIds = new Set(patch.nodes.map(node => node.data.gearId));
+    console.log(`Loading ${uniqueGearIds.size} unique gears for description generation`);
+    
+    // Batch load all gears at once
+    const gearPromises = Array.from(uniqueGearIds).map(gearId => getGear(gearId));
     const gears = await Promise.all(gearPromises);
     
     // Collect information about each gear's functionality (from its messages and label)

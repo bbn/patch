@@ -260,42 +260,68 @@ export async function PUT(
     // Apply updates
     let updated = false;
     
+    // Track if we need to update patches after all changes
+    let needsPatchUpdate = false;
+    
+    // Temporarily disable patch description updates during batch operations
+    gear.skipDescriptionUpdates = true;
+    
+    // Start a batch update to collect all changes before saving
+    gear.startBatchUpdate();
+    
     if (updates.messages) {
       console.log(`PUT API: Updating messages for gear ${gearId}`);
-      // Replace messages using setter method
-      await gear.setMessages(processMessages(updates.messages));
+      // Process messages but don't trigger patch updates yet
+      await gear.setMessages(processMessages(updates.messages), true);
       updated = true;
+      needsPatchUpdate = true;
     }
     
     if (updates.outputUrls) {
       console.log(`PUT API: Updating outputUrls for gear ${gearId}`);
-      // Replace output URLs using setter method
-      await gear.setOutputUrls(updates.outputUrls);
+      // Replace output URLs using setter method - skip individual save
+      await gear.setOutputUrls(updates.outputUrls, true);
       updated = true;
     }
     
     if (updates.exampleInputs) {
       console.log(`PUT API: Updating exampleInputs for gear ${gearId}`);
-      // Replace example inputs using setter method
-      await gear.setExampleInputs(updates.exampleInputs);
+      // Replace example inputs using setter method - skip individual save
+      await gear.setExampleInputs(updates.exampleInputs, true);
       updated = true;
     }
     
     if (updates.label !== undefined) {
-      console.log(`PUT API: Updating label for gear ${gearId} to "${updates.label}"`);
-      // Add more detailed log about the new label value and type
-      console.log(`NEW LABEL: "${updates.label}" (length: ${updates.label.length}, type: ${typeof updates.label})`);
-      
-      // Update the label
-      await gear.setLabel(updates.label);
-      updated = true;
+      // Only log and update if the label is actually changing
+      if (gear.label !== updates.label) {
+        console.log(`PUT API: Updating label for gear ${gearId} from "${gear.label}" to "${updates.label}"`);
+        
+        // Update the label but don't trigger patch updates yet or individual save
+        await gear.setLabel(updates.label, true);
+        updated = true;
+        needsPatchUpdate = true;
+      } else {
+        console.log(`PUT API: Label unchanged for gear ${gearId}, skipping update`);
+      }
     }
     
     if (updates.log !== undefined) {
       console.log(`PUT API: Updating log for gear ${gearId}`);
-      // Use the new setLog method
-      await gear.setLog(updates.log);
+      // Use the new setLog method - skip individual save
+      await gear.setLog(updates.log, true);
       updated = true;
+    }
+    
+    // Complete the batch update to save all changes at once
+    // Force a save even if pendingChanges isn't set
+    await gear.completeBatchUpdate(true);
+    
+    // Re-enable patch updates and do a single update if needed
+    gear.skipDescriptionUpdates = false;
+    
+    if (needsPatchUpdate) {
+      console.log(`PUT API: Performing a single patch description update`);
+      await gear.updateContainingPatchDescriptions();
     }
     
     if (updated) {

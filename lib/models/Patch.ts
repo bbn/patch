@@ -455,7 +455,22 @@ export class Patch {
 
   // Edge management
   async addEdge(edge: PatchEdge): Promise<void> {
+    console.log(`Adding edge from ${edge.source} to ${edge.target}`);
+    
+    // Check if edge already exists to avoid duplicates
+    const edgeExists = this.data.edges.some(e => 
+      e.source === edge.source && e.target === edge.target);
+      
+    if (edgeExists) {
+      console.log(`Edge already exists from ${edge.source} to ${edge.target}, skipping`);
+      return;
+    }
+    
+    // Add the edge to the patch data
     this.data.edges.push(edge);
+    
+    // Flag to track if we need to update description
+    let needsDescriptionUpdate = false;
     
     // Update the corresponding gears to establish the connection
     try {
@@ -463,14 +478,42 @@ export class Patch {
       const targetNode = this.data.nodes.find(node => node.id === edge.target);
       
       if (sourceNode && targetNode) {
-        const sourceGear = await Gear.findById(sourceNode.data.gearId);
-        if (sourceGear) {
-          // Use a standardized URL format for consistency
-          const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-          
-          // Check if this connection already exists to avoid duplicates
-          if (!sourceGear.outputUrls.includes(targetGearUrl)) {
-            await sourceGear.addOutputUrl(targetGearUrl);
+        // Use a standardized URL format for consistency
+        const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
+        
+        // Add outputUrl directly to source gear - skip API call
+        if (typeof window === 'undefined') {
+          // On server-side, directly update Firestore in one operation
+          const sourceGear = await Gear.findById(sourceNode.data.gearId);
+          if (sourceGear) {
+            // Skip description updates during connection to avoid redundant API calls
+            sourceGear.skipDescriptionUpdates = true;
+            
+            // Add the output URL without individual save
+            await sourceGear.addOutputUrl(targetGearUrl, true);
+            
+            // Save gear with the new URL
+            await sourceGear.save();
+            
+            // Description should be updated after connections change
+            needsDescriptionUpdate = true;
+          }
+        } else {
+          // On client-side, use a single API call to update the gear
+          try {
+            const response = await fetch(`/api/gears/${sourceNode.data.gearId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                outputUrls: [...(sourceNode.data.outputUrls || []), targetGearUrl]
+              })
+            });
+            
+            if (response.ok) {
+              needsDescriptionUpdate = true;
+            }
+          } catch (error) {
+            console.error("Error updating gear connections via API:", error);
           }
         }
       }
@@ -478,15 +521,24 @@ export class Patch {
       console.error("Error updating gear connections:", error);
     }
     
-    // Generate a new description when an edge is added, as connections change the functionality
-    await this.generateDescription();
-    
+    // Save the patch
     await this.save();
+    
+    // Conditionally update description in a single operation
+    // Only if we have multiple nodes and there was a connection change
+    if (needsDescriptionUpdate && this.data.nodes.length > 1) {
+      await this.generateDescription();
+    }
   }
 
   async updateEdge(id: string, updates: Partial<PatchEdge>): Promise<boolean> {
+    console.log(`Updating edge ${id}`);
+    
     const edgeIndex = this.data.edges.findIndex(edge => edge.id === id);
-    if (edgeIndex === -1) return false;
+    if (edgeIndex === -1) {
+      console.log(`Edge ${id} not found`);
+      return false;
+    }
     
     // If the connection is changing, update the gear connections
     const oldEdge = this.data.edges[edgeIndex];
@@ -496,33 +548,58 @@ export class Patch {
     // Track if connections changed to know if we need a new description
     let connectionsChanged = false;
     
+    // Track gears to update in a batch
+    const gearsToUpdate = new Map(); // Map<gearId, Gear>
+    
+    // Get a source gear and start batch update if needed
+    const getGearForUpdate = async (gearId) => {
+      if (gearsToUpdate.has(gearId)) {
+        return gearsToUpdate.get(gearId);
+      }
+      
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        gear.startBatchUpdate();
+        gearsToUpdate.set(gearId, gear);
+      }
+      return gear;
+    };
+    
     if (oldEdge.source !== newSourceId || oldEdge.target !== newTargetId) {
       connectionsChanged = true;
+      console.log(`Edge connections are changing from ${oldEdge.source}->${oldEdge.target} to ${newSourceId}->${newTargetId}`);
+      
       try {
-        // Remove old connection
-        const oldSourceNode = this.data.nodes.find(node => node.id === oldEdge.source);
-        const oldTargetNode = this.data.nodes.find(node => node.id === oldEdge.target);
-        
-        if (oldSourceNode && oldTargetNode) {
-          const oldSourceGear = await Gear.findById(oldSourceNode.data.gearId);
-          if (oldSourceGear) {
-            const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}`;
-            await oldSourceGear.removeOutputUrl(oldTargetUrl);
+        // Process old connection
+        if (oldEdge.source && oldEdge.target) {
+          const oldSourceNode = this.data.nodes.find(node => node.id === oldEdge.source);
+          const oldTargetNode = this.data.nodes.find(node => node.id === oldEdge.target);
+          
+          if (oldSourceNode && oldTargetNode) {
+            // Batch the update
+            const oldSourceGear = await getGearForUpdate(oldSourceNode.data.gearId);
+            
+            if (oldSourceGear) {
+              const oldTargetUrl = `/api/gears/${oldTargetNode.data.gearId}`;
+              // Remove URL without saving individually
+              await oldSourceGear.removeOutputUrl(oldTargetUrl, true);
+            }
           }
         }
         
-        // Add new connection
-        const newSourceNode = this.data.nodes.find(node => node.id === newSourceId);
-        const newTargetNode = this.data.nodes.find(node => node.id === newTargetId);
-        
-        if (newSourceNode && newTargetNode) {
-          const newSourceGear = await Gear.findById(newSourceNode.data.gearId);
-          if (newSourceGear) {
-            const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}`;
+        // Process new connection
+        if (newSourceId && newTargetId) {
+          const newSourceNode = this.data.nodes.find(node => node.id === newSourceId);
+          const newTargetNode = this.data.nodes.find(node => node.id === newTargetId);
+          
+          if (newSourceNode && newTargetNode) {
+            // Batch the update, possibly reusing the same gear
+            const newSourceGear = await getGearForUpdate(newSourceNode.data.gearId);
             
-            // Check if this connection already exists to avoid duplicates
-            if (!newSourceGear.outputUrls.includes(newTargetUrl)) {
-              await newSourceGear.addOutputUrl(newTargetUrl);
+            if (newSourceGear) {
+              const newTargetUrl = `/api/gears/${newTargetNode.data.gearId}`;
+              // Add URL without saving individually
+              await newSourceGear.addOutputUrl(newTargetUrl, true);
             }
           }
         }
@@ -531,17 +608,29 @@ export class Patch {
       }
     }
     
+    // Update the edge
     this.data.edges[edgeIndex] = {
       ...this.data.edges[edgeIndex],
       ...updates,
     };
     
-    // Update description if connections changed
-    if (connectionsChanged) {
+    // Complete all gear batch updates in parallel
+    const updatePromises = [];
+    for (const gear of gearsToUpdate.values()) {
+      updatePromises.push(gear.completeBatchUpdate(true));
+    }
+    
+    // Wait for all gear updates to complete
+    await Promise.all(updatePromises);
+    
+    // Save the patch changes
+    await this.save();
+    
+    // Update description if connections changed and we have multiple nodes
+    if (connectionsChanged && this.data.nodes.length > 1) {
       await this.generateDescription();
     }
     
-    await this.save();
     return true;
   }
 
@@ -549,7 +638,16 @@ export class Patch {
     const edgeToRemove = this.data.edges.find(edge => edge.id === id);
     if (!edgeToRemove) return false;
     
-    // Remove the connection between gears
+    // First update the edge list without saving
+    const initialLength = this.data.edges.length;
+    this.data.edges = this.data.edges.filter(edge => edge.id !== id);
+    
+    if (this.data.edges.length >= initialLength) {
+      console.log(`No edge with ID ${id} found in patch ${this.id}`);
+      return false;
+    }
+    
+    // Use batch updates for the source gear to avoid multiple API calls
     try {
       const sourceNode = this.data.nodes.find(node => node.id === edgeToRemove.source);
       const targetNode = this.data.nodes.find(node => node.id === edgeToRemove.target);
@@ -557,24 +655,45 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
+          console.log(`Updating source gear ${sourceGear.id} to remove connection`);
+          
+          // Start batch update to avoid individual saves
+          sourceGear.startBatchUpdate();
+          
+          // Remove URL without saving
           const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-          await sourceGear.removeOutputUrl(targetGearUrl);
+          const urlWasRemoved = await sourceGear.removeOutputUrl(targetGearUrl, true);
+          
+          if (urlWasRemoved) {
+            // Only generate new description if connection was actually removed
+            console.log(`Connection removed from ${sourceGear.id} to ${targetNode.data.gearId}`);
+            
+            // Complete batch update with a single save
+            await sourceGear.completeBatchUpdate(true);
+          } else {
+            // If URL wasn't found, just cancel the batch
+            sourceGear.skipDescriptionUpdates = false;
+            console.log(`No connection found from ${sourceGear.id} to ${targetNode.data.gearId}`);
+          }
         }
       }
+      
+      // Save the patch (will save edge changes)
+      await this.save();
+      
+      // Only generate description if we actually removed an edge and have more than one node
+      if (this.data.nodes.length > 1) {
+        // Generate a new description when an edge is removed, as it changes the functionality
+        await this.generateDescription();
+      }
+      
+      return true;
     } catch (error) {
-      console.error("Error removing gear connection:", error);
+      console.error(`Error removing edge ${id}:`, error);
+      // Still save the edge change even if gear update failed
+      await this.save();
+      return true;
     }
-    
-    const initialLength = this.data.edges.length;
-    this.data.edges = this.data.edges.filter(edge => edge.id !== id);
-    
-    // Generate a new description when an edge is removed, as it changes the functionality
-    if (this.data.edges.length < initialLength) {
-      await this.generateDescription();
-    }
-    
-    await this.save();
-    return this.data.edges.length < initialLength;
   }
 
   // Export patch to ReactFlow format
@@ -587,6 +706,9 @@ export class Patch {
   
   // Import from ReactFlow format
   async updateFromReactFlow(reactFlowData: { nodes: any[]; edges: any[] }): Promise<void> {
+    // Keep track of changes to determine if we need to update the description
+    let edgesChanged = false;
+    
     // Update positions and other visual properties
     this.data.nodes = reactFlowData.nodes;
     
@@ -594,18 +716,39 @@ export class Patch {
     const currentEdgeIds = new Set(this.data.edges.map(e => e.id));
     const newEdgeIds = new Set(reactFlowData.edges.map(e => e.id));
     
+    // Track gear updates to batch them
+    const gearUpdates = new Map(); // Map<gearId, Gear>
+    
+    // Get a source gear and start batch update if needed
+    const getGearForUpdate = async (gearId) => {
+      if (gearUpdates.has(gearId)) {
+        return gearUpdates.get(gearId);
+      }
+      
+      const gear = await Gear.findById(gearId);
+      if (gear) {
+        gear.startBatchUpdate();
+        gearUpdates.set(gearId, gear);
+      }
+      return gear;
+    };
+    
     // Remove edges that don't exist in the new data
     for (const edge of this.data.edges) {
       if (!newEdgeIds.has(edge.id)) {
+        edgesChanged = true;
         try {
           const sourceNode = this.data.nodes.find(node => node.id === edge.source);
           const targetNode = this.data.nodes.find(node => node.id === edge.target);
           
           if (sourceNode && targetNode) {
-            const sourceGear = await Gear.findById(sourceNode.data.gearId);
+            // Get or create gear with batch update
+            const sourceGear = await getGearForUpdate(sourceNode.data.gearId);
+            
             if (sourceGear) {
               const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-              await sourceGear.removeOutputUrl(targetGearUrl);
+              // Remove URL without saving individually
+              await sourceGear.removeOutputUrl(targetGearUrl, true);
             }
           }
         } catch (error) {
@@ -617,15 +760,23 @@ export class Patch {
     // Add new edges that don't exist in the current data
     for (const edge of reactFlowData.edges) {
       if (!currentEdgeIds.has(edge.id)) {
+        edgesChanged = true;
         try {
           const sourceNode = reactFlowData.nodes.find(node => node.id === edge.source);
           const targetNode = reactFlowData.nodes.find(node => node.id === edge.target);
           
           if (sourceNode && targetNode) {
-            const sourceGear = await Gear.findById(sourceNode.data.gearId);
+            // Get or create gear with batch update
+            const sourceGear = await getGearForUpdate(sourceNode.data.gearId);
+            
             if (sourceGear) {
               const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-              await sourceGear.addOutputUrl(targetGearUrl);
+              // Check if URL exists before adding
+              if (!sourceGear.outputUrls.includes(targetGearUrl)) {
+                sourceGear.data.outputUrls.push(targetGearUrl);
+                // Mark for saving without saving individually
+                sourceGear.pendingChanges = true;
+              }
             }
           }
         } catch (error) {
@@ -634,12 +785,26 @@ export class Patch {
       }
     }
     
+    // Complete all gear batch updates
+    const updatePromises = [];
+    for (const gear of gearUpdates.values()) {
+      updatePromises.push(gear.completeBatchUpdate(true));
+    }
+    
+    // Wait for all gear updates to complete
+    await Promise.all(updatePromises);
+    
+    // Update edges in patch data
     this.data.edges = reactFlowData.edges;
     
-    // Generate a description since the patch's functionality has changed
-    await this.generateDescription();
-    
-    await this.save();
+    // Generate a description only if the patch's functionality has changed
+    // and there are multiple nodes
+    if (edgesChanged && this.data.nodes.length > 1) {
+      await this.generateDescription();
+    } else {
+      // Just save the visual changes without description update
+      await this.save();
+    }
   }
   
   /**
@@ -651,6 +816,21 @@ export class Patch {
   async generateDescription(skipSave = false): Promise<string> {
     try {
       console.log(`Generating description for patch ${this.id}`);
+      
+      // Only generate description if we have gears and connections 
+      if (this.nodes.length === 0) {
+        console.log(`Skipping description generation for empty patch ${this.id}`);
+        return this.description;
+      }
+      
+      // For patches with only default gears, don't regenerate unless forced
+      const hasOnlyDefaultGears = this.nodes.every(node => 
+        node.data.label.startsWith("Gear "));
+        
+      if (hasOnlyDefaultGears && this.edges.length === 0 && this.description) {
+        console.log(`Skipping description generation for patch ${this.id} with only default gears`);
+        return this.description;
+      }
       
       // Always make the API call if client-side
       if (typeof window !== 'undefined') {

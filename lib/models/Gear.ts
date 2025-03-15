@@ -61,6 +61,14 @@ export class Gear {
   private data: GearData;
   private chat: GearChat;
   private unsubscribe: (() => void) | null = null;
+  
+  // Flag to control whether patch descriptions should be updated
+  // Set to true during initial creation to prevent unnecessary updates
+  skipDescriptionUpdates = false;
+  
+  // Flag to collect multiple updates before saving to reduce API calls
+  private batchUpdates = false;
+  pendingChanges = false;
 
   constructor(data: Partial<GearData> & { id: string }) {
     this.data = {
@@ -80,7 +88,27 @@ export class Gear {
 
   static async create(data: Partial<GearData> & { id: string }): Promise<Gear> {
     const gear = new Gear(data);
+    
+    // Skip description updates during initial creation
+    gear.skipDescriptionUpdates = true;
+    
+    // For initial creation, no need to batch since we need to save immediately
+    if (!data.messages || data.messages.length === 0) {
+      gear.data.messages = [
+        {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: 'You are a Gear that processes inputs and produces outputs. You can be configured with instructions.'
+        }
+      ];
+    }
+    
+    // Directly save the gear to ensure it's written to the database
     await gear.save();
+    
+    // Re-enable description updates after initial save
+    gear.skipDescriptionUpdates = false;
+    
     return gear;
   }
   
@@ -243,11 +271,40 @@ export class Gear {
     this.inServerApiHandler = true;
   }
   
+  /**
+   * Start collecting updates without saving after each change
+   * This allows batching multiple property updates into a single save operation
+   */
+  startBatchUpdate() {
+    this.batchUpdates = true;
+    this.pendingChanges = false;
+  }
+  
+  /**
+   * Complete a batch update by saving all collected changes at once
+   */
+  async completeBatchUpdate(forceSave = false): Promise<void> {
+    this.batchUpdates = false;
+    // Save if we have pending changes or if forceSave is true
+    if (this.pendingChanges || forceSave) {
+      await this.save();
+    }
+    this.pendingChanges = false;
+  }
+  
   async save(): Promise<void> {
     // Ensure data is not null and has required fields
     if (!this.data || !this.data.id) {
       console.error("Cannot save gear: data or id is missing");
       throw new Error("Cannot save gear: data or id is missing");
+    }
+    
+    // If we're in batch update mode, just mark that we have pending changes
+    // and don't actually save yet
+    if (this.batchUpdates) {
+      this.pendingChanges = true;
+      debugLog("GEAR-SAVE", `Deferring save of gear ${this.data.id} (batch mode)`);
+      return;
     }
     
     this.data.updatedAt = Date.now();
@@ -391,21 +448,32 @@ export class Gear {
     }
   }
   
-  async setLog(logEntries: GearLogEntry[]) {
+  async setLog(logEntries: GearLogEntry[], skipSave = false) {
     console.log(`Setting log for gear ${this.id} with ${logEntries.length} entries`);
     this.data.log = logEntries;
-    await this.save();
+    if (!skipSave) {
+      await this.save();
+    }
   }
 
-  async setLabel(label: string) {
+  async setLabel(label: string, skipPatchUpdates = false) {
     console.log(`Setting label for gear ${this.id}: "${label}"`);
     debugLog("LABEL", `setLabel called with label: "${label}" (length: ${label.length}, type: ${typeof label})`);
+    
+    // Skip updates if label hasn't actually changed
+    if (this.data.label === label) {
+      debugLog("LABEL", `Label unchanged, skipping update`);
+      return;
+    }
+    
     this.data.label = label;
     await this.save();
     debugLog("LABEL", `setLabel completed, current label: "${this.data.label}"`);
     
-    // Update the description of any patches containing this gear
-    await this.updatePatchDescriptions();
+    // Only update patch descriptions for meaningful label changes
+    if (!label.startsWith("Gear ") && !this.skipDescriptionUpdates && !skipPatchUpdates) {
+      await this.updatePatchDescriptions();
+    }
   }
   
   /**
@@ -418,22 +486,28 @@ export class Gear {
   }
   
   // Setters
-  async setMessages(messages: Message[]) {
+  async setMessages(messages: Message[], skipPatchUpdates = false) {
     this.data.messages = messages;
     await this.save();
     
-    // Updates to messages can change gear functionality, so update patch descriptions
-    await this.updateContainingPatchDescriptions();
+    // Updates to messages can change gear functionality, but we may want to batch updates
+    if (!skipPatchUpdates && !this.skipDescriptionUpdates) {
+      await this.updateContainingPatchDescriptions();
+    }
   }
   
-  async setOutputUrls(urls: string[]) {
+  async setOutputUrls(urls: string[], skipSave = false) {
     this.data.outputUrls = urls;
-    await this.save();
+    if (!skipSave) {
+      await this.save();
+    }
   }
   
-  async setExampleInputs(examples: ExampleInput[]) {
+  async setExampleInputs(examples: ExampleInput[], skipSave = false) {
     this.data.exampleInputs = examples;
-    await this.save();
+    if (!skipSave) {
+      await this.save();
+    }
   }
 
   async addExampleInput(name: string, input: GearInput): Promise<ExampleInput> {
@@ -902,54 +976,75 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
    * This is triggered after significant changes to this gear.
    */
   async updateContainingPatchDescriptions(specificPatchId?: string): Promise<void> {
-    if (typeof window !== 'undefined') {
-      try {
-        // If a specific patch ID is provided, only update that one
-        if (specificPatchId) {
-          console.log(`Updating description for specific patch ${specificPatchId}`);
-          await fetch(`/api/patches/${specificPatchId}/description`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
-          return;
-        }
-        
-        // Otherwise, find all patches that contain this gear
-        const response = await fetch('/api/patches');
-        if (!response.ok) return;
-        
-        const patches = await response.json();
-        
-        // For each patch, check if it contains this gear
-        for (const patchData of patches) {
-          try {
-            // Load the full patch data
-            const patchResponse = await fetch(`/api/patches/${patchData.id}`);
-            if (!patchResponse.ok) continue;
-            
-            const fullPatchData = await patchResponse.json();
-            
-            // Check if any nodes in this patch use this gear
-            const containsThisGear = fullPatchData.nodes?.some(
-              (node: any) => node.data?.gearId === this.id
-            );
-            
-            if (containsThisGear) {
-              console.log(`Updating description for patch ${patchData.id} due to gear changes`);
-              
-              // Use the description endpoint directly instead of regenerate_description param
-              await fetch(`/api/patches/${patchData.id}/description`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-              });
-            }
-          } catch (error) {
-            console.error(`Error checking patch ${patchData.id} for gear:`, error);
-          }
-        }
-      } catch (error) {
-        console.error("Error updating patch descriptions after gear changes:", error);
+    // Skip this entirely on initial creation or when running server-side
+    if (typeof window === 'undefined' || this.skipDescriptionUpdates) {
+      return;
+    }
+
+    try {
+      // If a specific patch ID is provided, only update that one
+      if (specificPatchId) {
+        console.log(`Updating description for specific patch ${specificPatchId}`);
+        await fetch(`/api/patches/${specificPatchId}/description`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
       }
+      
+      // Use a single request to get all patches in a compact format
+      const response = await fetch('/api/patches');
+      if (!response.ok) return;
+      
+      const patches = await response.json();
+      
+      // Find patches containing this gear by ID more efficiently
+      const batchPromises = [];
+      const patchesToUpdate = [];
+      
+      for (const patchData of patches) {
+        batchPromises.push(
+          (async () => {
+            try {
+              const patchResponse = await fetch(`/api/patches/${patchData.id}`);
+              if (!patchResponse.ok) return;
+              
+              const fullPatchData = await patchResponse.json();
+              
+              // Check if any nodes in this patch use this gear
+              const containsThisGear = fullPatchData.nodes?.some(
+                (node: any) => node.data?.gearId === this.id
+              );
+              
+              if (containsThisGear) {
+                patchesToUpdate.push(patchData.id);
+              }
+            } catch (error) {
+              console.error(`Error checking patch ${patchData.id} for gear:`, error);
+            }
+          })()
+        );
+      }
+      
+      // Wait for all checks to complete
+      await Promise.all(batchPromises);
+      
+      // Now update descriptions in batch
+      if (patchesToUpdate.length > 0) {
+        console.log(`Updating descriptions for ${patchesToUpdate.length} patches containing gear ${this.id}`);
+        
+        // Update descriptions in parallel
+        await Promise.all(
+          patchesToUpdate.map(patchId => 
+            fetch(`/api/patches/${patchId}/description`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Error updating patch descriptions after gear changes:", error);
     }
   }
 
@@ -978,16 +1073,32 @@ ${this.data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     return this.processWithoutLogging(source, input);
   }
 
-  async addOutputUrl(url: string) {
-    if (!this.data.outputUrls.includes(url)) {
+  async addOutputUrl(url: string, skipSave = false) {
+    // Check if URL already exists to avoid unnecessary updates
+    const urlExists = this.data.outputUrls.includes(url);
+    if (!urlExists) {
+      console.log(`Adding URL ${url} to gear ${this.id}`);
       this.data.outputUrls.push(url);
-      await this.save();
+      if (!skipSave) {
+        await this.save();
+      }
     }
+    
+    return !urlExists; // Return true if we added the URL
   }
 
-  async removeOutputUrl(url: string) {
+  async removeOutputUrl(url: string, skipSave = false) {
+    // Check if URL actually exists to avoid unnecessary updates
+    const initialLength = this.data.outputUrls.length;
     this.data.outputUrls = this.data.outputUrls.filter((u) => u !== url);
-    await this.save();
+    
+    // Only save if there was an actual change
+    if (initialLength !== this.data.outputUrls.length && !skipSave) {
+      console.log(`Removed URL ${url} from gear ${this.id}`);
+      await this.save();
+    }
+    
+    return initialLength !== this.data.outputUrls.length;
   }
 
   systemPrompt(): string {
