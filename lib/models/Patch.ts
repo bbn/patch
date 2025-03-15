@@ -813,13 +813,7 @@ export class Patch {
           console.log(`Saved patch directly to Firestore (client-side): ${this.data.id}`);
         } catch (error) {
           console.error(`Error saving patch directly to Firestore: ${this.data.id}`, error);
-          
-          // Fallback to API if direct save fails
-          await fetch(`/api/patches/${this.data.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.data),
-          });
+          // No fallback to API - just log the error
         }
       } else {
         // Server-side: Use Firebase Admin SDK
