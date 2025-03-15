@@ -850,8 +850,18 @@ export default function PatchPage() {
           parsedInput = inputData;
         }
         
+        console.log(`Adding example input "${name}" to gear ${gearId}`);
         const example = await gear.addExampleInput(name, parsedInput);
-        await gear.processExampleInput(example.id);
+        
+        if (example && example.id) {
+          console.log(`Processing example ${example.id}`);
+          await gear.processExampleInput(example.id);
+        } else {
+          console.error("Failed to get valid example ID after adding example");
+        }
+        
+        // Return the example for potential client-side use
+        return example;
         
         // Real-time updates will be handled by the subscription
         // Processing state is managed server-side in the API route
@@ -926,10 +936,38 @@ export default function PatchPage() {
       // Use the selected gear or find it
       const gear = selectedGear || await Gear.findById(gearId);
       if (gear) {
-        await gear.processExampleInput(id);
+        console.log(`Processing example ${id} for gear ${gearId}`);
         
-        // Real-time updates will be handled by the subscription
-        // Processing state is managed server-side in the API route
+        // Get the example before processing
+        const exampleBefore = gear.exampleInputs.find(e => e.id === id);
+        console.log(`Example before processing:`, exampleBefore ? {
+          id: exampleBefore.id,
+          name: exampleBefore.name,
+          hasOutput: !!exampleBefore.output,
+          outputType: exampleBefore.output ? typeof exampleBefore.output : 'undefined',
+        } : 'not found');
+        
+        // Process the example
+        const processedExample = await gear.processExampleInput(id);
+        
+        console.log(`Example processing result:`, processedExample ? {
+          id: processedExample.id,
+          name: processedExample.name, 
+          hasOutput: !!processedExample.output,
+          outputType: processedExample.output ? typeof processedExample.output : 'undefined',
+        } : 'failed');
+        
+        // Verify the example was updated - fetch the gear again to check
+        const updatedGear = await Gear.findById(gearId);
+        if (updatedGear) {
+          const exampleAfter = updatedGear.exampleInputs.find(e => e.id === id);
+          console.log(`Example after processing:`, exampleAfter ? {
+            id: exampleAfter.id,
+            name: exampleAfter.name,
+            hasOutput: !!exampleAfter.output,
+            outputType: exampleAfter.output ? typeof exampleAfter.output : 'undefined',
+          } : 'not found');
+        }
       }
     } catch (error) {
       console.error("Error processing example input:", error);

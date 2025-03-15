@@ -500,9 +500,24 @@ export class Gear {
   }
   
   async setExampleInputs(examples: ExampleInput[], skipSave = false) {
+    console.log(`Setting ${examples.length} examples for gear ${this.id}`);
+    
+    // Log examples with output for debugging
+    const withOutput = examples.filter(ex => ex.output !== undefined);
+    console.log(`Examples with output: ${withOutput.length}`);
+    
+    if (withOutput.length > 0) {
+      const example = withOutput[0];
+      console.log(`Example with output: ${example.id}`);
+      console.log(`Output type: ${typeof example.output}`);
+      console.log(`Has lastProcessed: ${!!example.lastProcessed}`);
+    }
+    
     this._data.exampleInputs = examples;
+    
     if (!skipSave) {
       await this.save();
+      console.log(`Saved gear after setting examples`);
     }
   }
 
@@ -526,12 +541,15 @@ export class Gear {
       }
     }
     
+    // Create example with a unique ID
+    const exampleId = crypto.randomUUID();
     const example: ExampleInput = {
-      id: crypto.randomUUID(),
+      id: exampleId,
       name,
       input: processedInput,
     };
     
+    // Add to the array and save
     this._data.exampleInputs.push(example);
     await this.save();
     
@@ -554,7 +572,8 @@ export class Gear {
       }
     }
     
-    return example;
+    // Return a copy of the created example to ensure it has all required properties
+    return { ...example };
   }
 
   async updateExampleInput(id: string, updates: Partial<ExampleInput>): Promise<ExampleInput | null> {
@@ -653,56 +672,124 @@ export class Gear {
       return null;
     }
     
-    const example = this._data.exampleInputs.find(ex => ex.id === id);
-    if (!example) {
+    // Find the example by ID
+    const index = this._data.exampleInputs.findIndex(ex => ex.id === id);
+    if (index === -1) {
+      console.error(`Example ${id} not found in exampleInputs array`);
       return null;
     }
     
+    // Get the example by reference for processing
+    const example = this._data.exampleInputs[index];
+    console.log(`Processing example ${id} for gear ${this._data.id}`);
+    
     try {
-      // For examples, directly process with the API using forward=false and create_log=false
-      // to prevent both forwarding outputs and creating log entries when processing examples
-      if (typeof window !== 'undefined') {
-        // In browser, use the API with forward=false and create_log=false
-        try {
-          const response = await fetch(`/api/gears/${this._data.id}?forward=false&create_log=false`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              source: 'example',
-              message: example.input
-            })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to process example: ${await response.text()}`);
-          }
-          
-          const result = await response.json();
-          
-          // Update the example with the new output
-          example.output = result.output;
-          example.lastProcessed = Date.now();
-          
-          // Save the updated example
-          await this.save();
-        } catch (error) {
-          console.error(`Error processing example with API: ${error}`);
-          throw error;
-        }
-      } else {
-        // Server-side: just use the LLM directly
-        const output = await this.processWithLLM(example.input);
-        
-        // Update the example with the new output
-        example.output = output;
-        example.lastProcessed = Date.now();
-        
-        await this.save();
+      // Process the example directly using the processWithLLM method for consistency
+      console.log(`Using direct processWithLLM method for example processing`);
+      const rawOutput = await this.processWithLLM(example.input);
+      
+      console.log(`Processed example raw output:`);
+      console.log(`  Raw output type: ${typeof rawOutput}`);
+      if (typeof rawOutput === 'string') {
+        console.log(`  Raw output preview: ${rawOutput.substring(0, 100)}...`);
+      } else if (rawOutput) {
+        console.log(`  Raw output preview: ${JSON.stringify(rawOutput).substring(0, 100)}...`);
       }
       
-      // Sync with server
+      // Extract clean output from Vercel AI SDK format if needed
+      let cleanOutput = rawOutput;
+      
+      // Helper function to clean any text content
+      const cleanTextContent = (text: string): string => {
+        // Start with the provided text
+        let cleaned = text.trim();
+        
+        // Remove "Output:" or "Output: " prefix if present (case insensitive)
+        const outputPrefixRegex = /^(?:output:?\s*)/i;
+        if (outputPrefixRegex.test(cleaned)) {
+          console.log(`Removing "Output:" prefix from content`);
+          cleaned = cleaned.replace(outputPrefixRegex, '');
+        }
+        
+        // Remove surrounding quotes if present
+        if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || 
+            (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+          console.log(`Removing surrounding quotes from content`);
+          cleaned = cleaned.substring(1, cleaned.length - 1);
+        }
+        
+        return cleaned.trim();
+      };
+      
+      // Handle the specific format we're seeing: [{"type":"text","text":"Output: \"text\""}]
+      if (typeof rawOutput === 'string') {
+        try {
+          // Check if it's a JSON string containing a TextUIPart array
+          if (rawOutput.startsWith('[{') && rawOutput.includes('"type":"text"')) {
+            const parsed = JSON.parse(rawOutput);
+            
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type === 'text') {
+              console.log(`Detected Vercel AI SDK TextUIPart format, extracting content`);
+              cleanOutput = cleanTextContent(parsed[0].text);
+              console.log(`Extracted clean output: "${cleanOutput}"`);
+            }
+          } else {
+            // It's a regular string, but still clean it
+            cleanOutput = cleanTextContent(rawOutput);
+            console.log(`Cleaned regular string output: "${cleanOutput}"`);
+          }
+        } catch (e) {
+          console.warn(`Error parsing output format:`, e);
+          // Still try to clean the raw output even if parsing fails
+          cleanOutput = cleanTextContent(rawOutput);
+        }
+      } else if (typeof rawOutput === 'object' && rawOutput !== null) {
+        // Handle object formats (like direct TextUIPart objects)
+        try {
+          if (Array.isArray(rawOutput) && rawOutput.length > 0 && 
+              typeof rawOutput[0] === 'object' && rawOutput[0] !== null &&
+              'type' in rawOutput[0] && rawOutput[0].type === 'text' && 
+              'text' in rawOutput[0]) {
+            
+            // It's a TextUIPart array as an object
+            console.log(`Detected TextUIPart array object format`);
+            cleanOutput = cleanTextContent(rawOutput[0].text);
+          } else if ('text' in rawOutput && typeof rawOutput.text === 'string') {
+            // Simple object with text property
+            console.log(`Detected object with text property`);
+            cleanOutput = cleanTextContent(rawOutput.text);
+          } else if ('content' in rawOutput && typeof rawOutput.content === 'string') {
+            // Simple object with content property
+            console.log(`Detected object with content property`);
+            cleanOutput = cleanTextContent(rawOutput.content);
+          }
+        } catch (e) {
+          console.warn(`Error processing object output:`, e);
+          // Fall back to using the raw output
+        }
+      }
+      
+      // Update the example with the cleaned output using direct array modification
+      this._data.exampleInputs[index] = {
+        ...example,
+        output: cleanOutput,
+        lastProcessed: Date.now()
+      };
+      
+      // Log the updated example for verification
+      console.log(`Updated example in array:`);
+      console.log(`  ID: ${this._data.exampleInputs[index].id}`);
+      console.log(`  Has output: ${!!this._data.exampleInputs[index].output}`);
+      console.log(`  Output type: ${typeof this._data.exampleInputs[index].output}`);
+      
+      // Save the updated example to Firestore
+      await this.save();
+      console.log(`Saved gear with updated example`);
+      
+      // Extra verification step: Save again through the API to ensure consistency
       if (typeof window !== 'undefined') {
         try {
+          console.log(`Explicitly syncing examples to server via API`);
           const updateResponse = await fetch(`/api/gears/${this._data.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -712,14 +799,17 @@ export class Gear {
           });
           
           if (!updateResponse.ok) {
-            console.warn("Failed to update processed example on server:", await updateResponse.text());
+            console.warn("Failed to update examples on server:", await updateResponse.text());
+          } else {
+            console.log(`Successfully synced examples to server`);
           }
         } catch (err) {
-          console.warn("Error updating processed example on server:", err);
+          console.warn("Error syncing examples to server:", err);
         }
       }
       
-      return example;
+      // Return the updated example for client use
+      return this._data.exampleInputs[index];
     } catch (error) {
       console.error(`Error processing example input ${id}:`, error);
       throw error;
@@ -731,18 +821,30 @@ export class Gear {
       return [];
     }
     
+    console.log(`Processing all ${this._data.exampleInputs.length} examples for gear ${this._data.id}`);
     const results: ExampleInput[] = [];
     
+    // Process examples one by one
     for (const example of this._data.exampleInputs) {
       try {
-        // Process each example individually with no_forward=true
-        await this.processExampleInput(example.id);
-        results.push(example);
+        console.log(`Processing example ${example.id}`);
+        const processedExample = await this.processExampleInput(example.id);
+        if (processedExample) {
+          results.push(processedExample);
+        }
       } catch (error) {
         console.error(`Error processing example input ${example.id}:`, error);
         // Continue processing other examples even if one fails
       }
     }
+    
+    // Verify all examples were processed
+    console.log(`Processed ${results.length} examples successfully`);
+    const examplesWithOutput = this._data.exampleInputs.filter(ex => ex.output !== undefined);
+    console.log(`Examples with output after processing: ${examplesWithOutput.length}/${this._data.exampleInputs.length}`);
+    
+    // Final save to ensure all examples are persisted
+    await this.save();
     
     return results;
   }
@@ -1125,19 +1227,47 @@ ${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     try {
       let output;
       
+      // Add more detailed logging
+      console.log(`Process called for gear ${this.id}`);
+      console.log(`Input type: ${input !== undefined ? typeof input : 'undefined (using all inputs)'}`);
+      
       if (input !== undefined) {
         // For backward compatibility, if input is provided directly,
         // process just that input directly
+        console.log(`Processing single input for gear ${this.id}`);
         output = await this.processWithLLM(input);
+        
+        console.log(`Received output from LLM for gear ${this.id}:`);
+        console.log(`Output type: ${typeof output}`);
+        if (typeof output === 'string') {
+          console.log(`Output preview: ${output.substring(0, 50)}...`);
+        } else if (output) {
+          console.log(`Output preview: ${JSON.stringify(output).substring(0, 50)}...`);
+        }
+        
         this._data.output = output;
         await this.save();
+        
+        console.log(`Saved gear with new output`);
         return output;
       }
       
       // Process all inputs from the inputs dictionary
+      console.log(`Processing all inputs for gear ${this.id}`);
       output = await this.processWithLLM();
+      
+      console.log(`Received output from LLM for gear ${this.id}:`);
+      console.log(`Output type: ${typeof output}`);
+      if (typeof output === 'string') {
+        console.log(`Output preview: ${output.substring(0, 50)}...`);
+      } else if (output) {
+        console.log(`Output preview: ${JSON.stringify(output).substring(0, 50)}...`);
+      }
+      
       this._data.output = output;
       await this.save();
+      
+      console.log(`Saved gear with new output`);
       return output;
     } catch (error) {
       console.error(`Error processing: ${error}`);

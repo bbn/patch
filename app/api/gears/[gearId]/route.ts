@@ -89,6 +89,15 @@ export async function POST(
     const output = await gear.process(message);
     
     // Output is already stored in gear.data.output by the process method
+    console.log(`Processed output for gear ${gearId}:`);
+    console.log(`  Output type: ${typeof output}`);
+    if (typeof output === 'string') {
+      console.log(`  Output preview: ${output.substring(0, 100)}...`);
+    } else if (output) {
+      console.log(`  Output preview: ${JSON.stringify(output).substring(0, 100)}...`);
+    } else {
+      console.log(`  Output is empty or undefined!`);
+    }
     
     // Create a log entry based on shouldCreateLog flag
     if (shouldCreateLog) {
@@ -286,6 +295,26 @@ export async function PUT(
     
     if (updates.exampleInputs) {
       console.log(`PUT API: Updating exampleInputs for gear ${gearId}`);
+      
+      // Add detailed debug logging for examples
+      if (updates.exampleInputs.length > 0) {
+        console.log(`Example inputs count: ${updates.exampleInputs.length}`);
+        const examplesWithOutput = updates.exampleInputs.filter(ex => ex.output !== undefined);
+        console.log(`Examples with output: ${examplesWithOutput.length}`);
+        
+        if (examplesWithOutput.length > 0) {
+          const example = examplesWithOutput[0];
+          console.log(`Example ${example.id} - ${example.name}:`);
+          console.log(`  Has output: ${!!example.output}`);
+          console.log(`  Output type: ${typeof example.output}`);
+          if (typeof example.output === 'string') {
+            console.log(`  Output preview: ${example.output.substring(0, 50)}...`);
+          } else if (example.output) {
+            console.log(`  Output preview: ${JSON.stringify(example.output).substring(0, 50)}...`);
+          }
+        }
+      }
+      
       // Replace example inputs using setter method - skip individual save
       await gear.setExampleInputs(updates.exampleInputs, true);
       updated = true;
