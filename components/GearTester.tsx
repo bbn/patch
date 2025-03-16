@@ -5,6 +5,16 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Gear, GearLogEntry } from '@/lib/models/Gear';
+import { AnyMessagePart } from '@/lib/models/types';
+import { formatMessageParts, toMessageParts, extractTextFromParts } from '@/lib/utils';
+
+// Augment the GearLogEntry type to include the new message fields
+declare module '@/lib/models/Gear' {
+  interface GearLogEntry {
+    inputMessage?: AnyMessagePart[];
+    outputMessage?: AnyMessagePart[];
+  }
+}
 
 interface GearTesterProps {
   gearId: string;
@@ -18,23 +28,49 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
   const [error, setError] = useState('');
   const [logEntries, setLogEntries] = useState<GearLogEntry[]>([]);
 
-  // Load gear data
+  // Load gear data and set up real-time updates
   useEffect(() => {
     if (!gearId) return;
+    
+    let unsubscribe: (() => void) | null = null;
 
     const loadGear = async () => {
       try {
         const loadedGear = await Gear.findById(gearId);
-        setGear(loadedGear);
         
-        // If gear has output, show it
-        if (loadedGear?.output) {
-          setOutput(loadedGear.output as string);
-        }
-        
-        // Load log entries
-        if (loadedGear?.log) {
-          setLogEntries(loadedGear.log);
+        if (loadedGear) {
+          setGear(loadedGear);
+          
+          // If gear has output, show it
+          if (loadedGear.output) {
+            setOutput(loadedGear.output as string);
+          }
+          
+          // Load log entries (always set to an array, even if empty)
+          setLogEntries(loadedGear.log || []);
+          
+          // Set up real-time updates
+          console.log(`Setting up real-time updates for gear ${gearId}`);
+          unsubscribe = loadedGear.subscribeToUpdates((updatedGear) => {
+            console.log(`Received real-time update for gear ${gearId}`);
+            setGear(updatedGear);
+            
+            // Update output if it changed
+            if (updatedGear.output) {
+              setOutput(updatedGear.output as string);
+            }
+            
+            // Always update log entries, ensuring it's an array
+            const logEntries = updatedGear.log || [];
+            console.log(`Updated log entries for gear ${gearId}: ${logEntries.length} entries`);
+            
+            // Always update log entries, even if empty, to ensure UI reflects current state
+            setLogEntries(prevLogEntries => {
+              const hasChanged = JSON.stringify(prevLogEntries) !== JSON.stringify(logEntries);
+              console.log(`Log entries ${hasChanged ? 'CHANGED' : 'unchanged'} (current: ${prevLogEntries.length}, new: ${logEntries.length})`);
+              return logEntries;
+            });
+          });
         }
       } catch (err) {
         console.error('Error loading gear:', err);
@@ -43,6 +79,14 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
     };
 
     loadGear();
+    
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) {
+        console.log(`Cleaning up subscription for gear ${gearId}`);
+        unsubscribe();
+      }
+    };
   }, [gearId]);
 
   const handleProcess = async () => {
@@ -70,14 +114,8 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
       const result = await response.json();
       setOutput(result.output);
       
-      // Reload the gear to get updated state
-      const updatedGear = await Gear.findById(gearId);
-      setGear(updatedGear);
-      
-      // Update log entries
-      if (updatedGear?.log) {
-        setLogEntries(updatedGear.log);
-      }
+      // We don't need to reload the gear here since we have real-time updates
+      // The subscription will handle updating the state when the log is updated
     } catch (err: any) {
       console.error('Error processing input:', err);
       setError(err.message || 'Failed to process input');
@@ -121,12 +159,24 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
     return date.toLocaleString();
   };
   
-  // Format input/output for display
+  // Format input/output for display using enhanced message format
   const formatContent = (content: string | Record<string, unknown>): string => {
-    if (typeof content === 'string') {
-      return content;
+    try {
+      // Special handling for string that might be JSON array of message parts
+      if (typeof content === 'string' && content.trim().startsWith('[{') && 
+          content.includes('"type"') && content.includes('"text"')) {
+        // Try direct formatting first
+        return formatMessageParts(content);
+      }
+      
+      // Default approach: convert to message parts, then format
+      const messageParts = toMessageParts(content);
+      return formatMessageParts(messageParts);
+    } catch (e) {
+      console.error('Error formatting content:', e);
+      // Fallback to simple stringification
+      return typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     }
-    return JSON.stringify(content, null, 2);
   };
 
   return (
@@ -157,10 +207,20 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
             </div>
           )}
           
-          {/* Log Display */}
-          {logEntries.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium mb-2">Activity Log</h3>
+          {/* Log Display with Debug Info */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-medium">Activity Log</h3>
+              <div className="text-xs text-gray-500">Count: {logEntries.length}</div>
+            </div>
+            
+            {logEntries.length === 0 ? (
+              <div className="text-gray-500 text-sm p-4 text-center border rounded-md">
+                No log entries found. 
+                <br/>
+                <span className="text-xs mt-1 block">Log entries will appear here when the gear processes inputs from other gears.</span>
+              </div>
+            ) : (
               <div className="border rounded-md overflow-hidden">
                 {logEntries.map((entry, index) => (
                   <div 
@@ -176,22 +236,24 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
                       <div>
                         <div className="text-xs font-medium mb-1">Input:</div>
                         <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                          {formatContent(entry.input)}
+                          {/* Extract just the text content for display, preserving full data in database */}
+                          {entry.inputMessage ? extractTextFromParts(entry.inputMessage) : formatContent(entry.input)}
                         </div>
                       </div>
                       
                       <div>
                         <div className="text-xs font-medium mb-1">Output:</div>
                         <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                          {entry.output ? formatContent(entry.output) : 'No output'}
+                          {/* Extract just the text content for display, preserving full data in database */}
+                          {entry.outputMessage ? extractTextFromParts(entry.outputMessage) : entry.output ? formatContent(entry.output) : 'No output'}
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </CardContent>
       <CardFooter>

@@ -1044,7 +1044,7 @@ export default function PatchPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: output,
-            source: 'example'
+            source: 'example_output' // Special source identifier to indicate this is an example output being forwarded
           })
         });
         

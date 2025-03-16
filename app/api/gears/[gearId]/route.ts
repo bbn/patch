@@ -5,20 +5,33 @@ import { debugLog } from "@/lib/utils";
 export const runtime = "nodejs";
 
 // Utility function to ensure role has valid type
-function validateRole(role: any): Role {
+function validateRole(role: unknown): Role {
   const validRoles: Role[] = ["user", "assistant", "system"];
-  return validRoles.includes(role) ? role : "user";
+  return validRoles.includes(role as Role) ? (role as Role) : "user";
 }
 
 // Process messages to ensure they have valid roles
-function processMessages(messages: any[]): Message[] {
+function processMessages(messages: unknown[]): Message[] {
   if (!Array.isArray(messages)) return [];
   
-  return messages.map(msg => ({
-    id: msg.id || crypto.randomUUID(),
-    role: validateRole(msg.role),
-    content: String(msg.content || "")
-  }));
+  return messages.map(msg => {
+    // Ensure msg is an object first
+    if (typeof msg !== 'object' || msg === null) {
+      return {
+        id: crypto.randomUUID(),
+        role: 'user' as Role,
+        content: String(msg || "")
+      };
+    }
+    
+    // Now we can safely access properties with a type assertion
+    const msgObj = msg as Record<string, unknown>;
+    return {
+      id: typeof msgObj.id === 'string' ? msgObj.id : crypto.randomUUID(),
+      role: validateRole(msgObj.role),
+      content: String(msgObj.content || "")
+    };
+  });
 }
 
 export async function POST(
@@ -44,7 +57,8 @@ export async function POST(
     const createLogParam = url.searchParams.get('create_log');
     const noLogParam = url.searchParams.get('no_log');
     // Default to true, explicitly set to false only when create_log=false or no_log=true
-    const shouldCreateLog = createLogParam !== 'false' && noLogParam !== 'true';
+    // Using let instead of const since we may need to modify this based on source type
+    let shouldCreateLog = createLogParam !== 'false' && noLogParam !== 'true';
     
     const requestBody = await req.json();
     const gearId = resolvedParams.gearId;
@@ -75,16 +89,54 @@ export async function POST(
       sourceLabel = source;
       console.log(`Received message for gear ${gearId} from source: ${source}`);
       debugLog("API", `[${gearId}] Legacy source format: ${source}`);
+      
+      // If this is an example output, mark it but don't handle it yet
+      // We need to wait until we have the gear object
+      if (source === 'example_output') {
+        console.log(`Example output detected for gear ${gearId}`);
+        
+        // Special handling for example outputs: disable log creation
+        shouldCreateLog = false;
+      }
     }
 
     // Try to find the gear
-    let gear = await Gear.findById(gearId);
+    const gear = await Gear.findById(gearId);
     
     if (!gear) {
       console.log("Gear not found:", gearId);
       return new Response("Gear not found", { status: 404 });
     }
 
+    // Special handling for example outputs
+    if (source === 'example_output') {
+      console.log(`Processing example output for forwarding in gear ${gearId}`);
+      
+      // Store the input under the special key to signal this is an example output being forwarded
+      const gearData = gear.data;
+      if (!gearData.inputs) {
+        gearData.inputs = {};
+      }
+      gearData.inputs['example_output'] = message;
+      
+      // Update the gear's internal data
+      await gear.setInputs(gearData.inputs);
+      
+      // Skip processing in the current gear, just forward the output directly
+      console.log(`Skipping processing in current gear, just forwarding example output`);
+      
+      // Forward the output directly without processing
+      if (shouldForward && gear.outputUrls?.length > 0) {
+        console.log(`Forwarding example output to ${gear.outputUrls.length} connected gears`);
+        await gear.forwardOutputToGears(message);
+      } else {
+        console.log(`No forwarding needed for example output from gear ${gearId}`);
+      }
+      
+      // Return early with the original message as output
+      return Response.json({ output: message });
+    }
+    
     // Process the input
     const output = await gear.process(message);
     
@@ -110,26 +162,57 @@ export async function POST(
       debugLog("API", `[${gearId}] Creating log entry from source ${JSON.stringify(sourceObj)}`);
       
       try {
-        // Create a log entry for the PUT request to handle
+        // Import utility functions for message formatting
+        const { toMessageParts } = await import('@/lib/utils');
+        
+        // Create a log entry with enhanced message format
         const logEntry = {
           timestamp: Date.now(),
           input: message,
           output,
-          source: sourceObj
+          source: sourceObj,
+          // Add structured message parts for better rendering
+          inputMessage: toMessageParts(message),
+          outputMessage: output ? toMessageParts(output) : undefined
         };
+        
+        console.log(`Created log entry for gear ${gearId}:`);
+        console.log(`- Source: ${typeof sourceObj === 'object' ? JSON.stringify(sourceObj) : sourceObj}`);
+        console.log(`- Timestamp: ${new Date(logEntry.timestamp).toISOString()}`);
+        console.log(`- Input type: ${typeof message}`);
+        console.log(`- Output type: ${typeof output}`);
         
         // Update the gear via PUT request to itself to add the log entry
         const currentLog = gear.log || [];
         const updatedLog = [logEntry, ...currentLog].slice(0, 50); // Keep only 50 entries
         
-        // Update using the Edit method
-        await fetch(`/api/gears/${gearId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            log: updatedLog
-          }),
-        });
+        // Update using the Edit method with absolute URL for server-side execution
+        // Get the origin from the request URL or use a default for server-side
+        const requestUrl = new URL(req.url);
+        const origin = requestUrl.origin;
+        
+        console.log(`Updating log for gear ${gearId}`);
+        console.log(`- Log entries count: ${updatedLog.length}`);
+        
+        try {
+          // Set the log directly on the gear object
+          console.log(`Directly updating log for gear ${gearId} with ${updatedLog.length} entries`);
+          
+          // Use the gear's setLog method to ensure proper saving
+          await gear.setLog(updatedLog);
+          
+          console.log(`Successfully updated log for gear ${gearId} directly`);
+          
+          // Double check if the log was saved
+          const verifyGear = await Gear.findById(gearId);
+          if (verifyGear && verifyGear.log) {
+            console.log(`Verified log update for gear ${gearId}: ${verifyGear.log.length} entries`);
+          } else {
+            console.error(`Failed to verify log update for gear ${gearId}`);
+          }
+        } catch (updateError) {
+          console.error(`Error updating log for gear ${gearId}:`, updateError);
+        }
         
         debugLog("API", `[${gearId}] Created log entry (log count: ${updatedLog.length})`);
         
@@ -259,7 +342,7 @@ export async function PUT(
     console.log(`PUT request for gear: ${gearId}`);
     
     // Try to find the gear
-    let gear = await Gear.findById(gearId);
+    const gear = await Gear.findById(gearId);
     
     if (!gear) {
       console.log(`PUT API: Gear ${gearId} not found`);

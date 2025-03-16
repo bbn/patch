@@ -42,6 +42,9 @@ export interface GearLogEntry {
   input: GearInput;
   output?: GearOutput;
   source?: GearSource | string;
+  // Optional fields for the enhanced message format
+  inputMessage?: AnyMessagePart[];
+  outputMessage?: AnyMessagePart[];
 }
 
 export interface GearData {
@@ -348,6 +351,12 @@ export class Gear {
         // Make a clean copy of the data to ensure it's a plain object
         const cleanData = JSON.parse(JSON.stringify(this._data));
         
+        // Ensure the log array is defined (never undefined/null)
+        if (!cleanData.log) {
+          cleanData.log = [];
+          console.log(`Ensuring log array exists for gear ${this._data.id}`);
+        }
+        
         // Save directly to Firestore using client SDK
         await saveGear(this._data.id, cleanData);
         
@@ -362,6 +371,12 @@ export class Gear {
         
         // Make a clean copy of the data to ensure it's a plain object
         const cleanData = JSON.parse(JSON.stringify(this._data));
+        
+        // Ensure the log array is defined (never undefined/null)
+        if (!cleanData.log) {
+          cleanData.log = [];
+          console.log(`Ensuring log array exists for gear ${this._data.id} (server-side)`);
+        }
         
         // Save to Firestore using the Admin SDK
         await saveGearAdmin(this._data.id, cleanData);
@@ -393,6 +408,14 @@ export class Gear {
 
   get inputs() {
     return this._data.inputs || {};
+  }
+  
+  // Add a setter for inputs
+  async setInputs(inputs: Record<string, GearInput>, skipSave = false) {
+    this._data.inputs = inputs;
+    if (!skipSave) {
+      await this.save();
+    }
   }
 
   get output() {
@@ -446,7 +469,23 @@ export class Gear {
   
   async setLog(logEntries: GearLogEntry[], skipSave = false) {
     console.log(`Setting log for gear ${this.id} with ${logEntries.length} entries`);
-    this._data.log = logEntries;
+    
+    // Explicitly create log array if it doesn't exist
+    if (!this._data.log) {
+      this._data.log = [];
+    }
+    
+    // Important: Replace the entire array rather than just assigning to maintain references
+    // This ensures the array is properly updated and saved to Firestore
+    this._data.log.length = 0; // Clear the array while preserving the reference
+    
+    // Add each entry to the array
+    for (const entry of logEntries) {
+      this._data.log.push(entry);
+    }
+    
+    console.log(`Log array now has ${this._data.log.length} entries`);
+    
     if (!skipSave) {
       await this.save();
     }
@@ -1424,6 +1463,13 @@ ${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
   }
 
   async forwardOutputToGears(output: GearOutput): Promise<void> {
+    // Debug log the output type and structure to help diagnose issues
+    console.log(`forwardOutputToGears called for gear ${this.id} with output type ${typeof output}`);
+    if (typeof output === 'string') {
+      console.log(`Output preview: ${output.substring(0, 50)}...`);
+    } else if (output) {
+      console.log(`Output preview: ${JSON.stringify(output).substring(0, 50)}...`);
+    }
     // If there are no output gears, just return early
     if (!this.outputUrls || this.outputUrls.length === 0) {
       return;
@@ -1447,8 +1493,17 @@ ${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           debugLog("FORWARDING", `Removing "/process" suffix: ${url} -> ${fullUrl}`);
         }
         
-        // Make sure logs are created in receiving gears by using create_log=true
-        // If URL already has parameters that would disable logging, update them
+        // Always ensure logs are created in receiving gears when forwarding outputs (including example outputs)
+        // This is important because we want to see logs in gear B when we send output from gear A to B
+        if (this._data.inputs && this._data.inputs['example_output']) {
+          console.log(`Example output from gear ${this.id}, ENABLING logs in target gears`);
+          const inputPreview = typeof this._data.inputs['example_output'] === 'string' 
+            ? this._data.inputs['example_output'].substring(0, 40) 
+            : JSON.stringify(this._data.inputs['example_output']).substring(0, 40);
+          debugLog("FORWARDING", `Example output inputs key exists: ${inputPreview}...`);
+        }
+        
+        // For all forwarding, ensure logs are created
         if (fullUrl.includes('no_log=true')) {
           // Replace no_log=true with create_log=true
           fullUrl = fullUrl.replace('no_log=true', 'create_log=true');
@@ -1457,6 +1512,10 @@ ${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
           // Replace create_log=false with create_log=true
           fullUrl = fullUrl.replace('create_log=false', 'create_log=true');
           debugLog("FORWARDING", `Fixed URL to enable logs: ${fullUrl}`);
+        } else if (!fullUrl.includes('create_log=true')) {
+          // Add parameter to enable log creation if not already there
+          fullUrl += (fullUrl.includes('?') ? '&' : '?') + 'create_log=true';
+          debugLog("FORWARDING", `Adding parameter to enable logs: ${fullUrl}`);
         }
         
         debugLog("FORWARDING", `Gear ${this.id} forwarding to URL: ${fullUrl}`);

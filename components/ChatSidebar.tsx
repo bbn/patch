@@ -21,6 +21,16 @@ import {
 
 import { ExampleInputPanel } from "./ExampleInputPanel";
 import { ExampleInput, GearLogEntry } from "@/lib/models/Gear";
+import { AnyMessagePart } from "@/lib/models/types";
+import { formatMessageParts, toMessageParts, extractTextFromParts } from "@/lib/utils";
+
+// Augment the GearLogEntry type to include the new message fields
+declare module '@/lib/models/Gear' {
+  interface GearLogEntry {
+    inputMessage?: AnyMessagePart[];
+    outputMessage?: AnyMessagePart[];
+  }
+}
 
 interface ChatSidebarProps {
   gearId: string;
@@ -250,14 +260,16 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     <div>
                       <div className="text-xs font-medium mb-1">Input:</div>
                       <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                        {formatContent(entry.input)}
+                        {/* Extract just the text content for display, preserving full data in database */}
+                        {entry.inputMessage ? extractTextFromParts(entry.inputMessage) : formatContent(entry.input)}
                       </div>
                     </div>
                     
                     <div>
                       <div className="text-xs font-medium mb-1">Output:</div>
                       <div className="text-xs overflow-auto max-h-20 whitespace-pre-wrap bg-gray-100 p-1 rounded">
-                        {entry.output ? formatContent(entry.output) : 'No output'}
+                        {/* Extract just the text content for display, preserving full data in database */}
+                        {entry.outputMessage ? extractTextFromParts(entry.outputMessage) : entry.output ? formatContent(entry.output) : 'No output'}
                       </div>
                     </div>
                   </div>
@@ -292,12 +304,24 @@ const formatTimestamp = (timestamp: number): string => {
   return date.toLocaleString();
 };
 
-// Format input/output for display
+// Format input/output for display using enhanced message format
 const formatContent = (content: string | Record<string, unknown>): string => {
-  if (typeof content === 'string') {
-    return content;
+  try {
+    // Special handling for string that might be JSON array of message parts
+    if (typeof content === 'string' && content.trim().startsWith('[{') && 
+        content.includes('"type"') && content.includes('"text"')) {
+      // Try direct formatting first
+      return formatMessageParts(content);
+    }
+    
+    // Default approach: convert to message parts, then format
+    const messageParts = toMessageParts(content);
+    return formatMessageParts(messageParts);
+  } catch (e) {
+    console.error('Error formatting content:', e);
+    // Fallback to simple stringification
+    return typeof content === 'string' ? content : JSON.stringify(content, null, 2);
   }
-  return JSON.stringify(content, null, 2);
 };
 
 // Format source to display the label
