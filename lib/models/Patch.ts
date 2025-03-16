@@ -1,25 +1,11 @@
 import { Gear } from "./Gear";
-// Import client-side operations
-import { savePatch, getPatch, deletePatch, getAllPatches } from '../firestore';
+// Import unified database interface
+import { getDatabase, Database } from '../database';
 
-// Import server-side operations for Node.js environment
-// Using dynamic import to avoid bundling firebase-admin code in client components
-let savePatchAdmin: (id: string, data: any) => Promise<void>;
-let getPatchAdmin: <T>(id: string) => Promise<T | null>;
-let deletePatchAdmin: (id: string) => Promise<boolean>;
-let getAllPatchesAdmin: () => Promise<any[]>;
-
-// Only import server functions if running on the server
-if (typeof window === 'undefined') {
-  // Using require instead of import to avoid bundling issues
-  const serverFunctions = require('../server/firestore-admin');
-  savePatchAdmin = serverFunctions.savePatchAdmin;
-  getPatchAdmin = serverFunctions.getPatchAdmin;
-  deletePatchAdmin = serverFunctions.deletePatchAdmin;
-  getAllPatchesAdmin = serverFunctions.getAllPatchesAdmin;
-}
+// Get the appropriate database implementation based on environment
+const database: Database = getDatabase();
 import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db as firestoreDb } from '../firebase';
 
 export interface PatchNode {
   id: string;
@@ -79,10 +65,10 @@ export class Patch {
   }
   
   static async deleteById(id: string): Promise<boolean> {
+    // This method requires different behavior on client and server
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use the API endpoint to trigger cascade deletion
       try {
-        // Delete the patch via API (which will cascade delete the gears on the server)
         console.log(`Calling API to delete patch ${id} and associated gears`);
         const response = await fetch(`/api/patches/${id}`, {
           method: 'DELETE',
@@ -101,8 +87,7 @@ export class Patch {
         return false;
       }
     } else {
-      // Server-side: Use Firestore directly
-      // First retrieve the patch to get all gear IDs
+      // Server-side: Handle cascade deletion logic
       try {
         // Get the patch
         const patch = await Patch.findById(id);
@@ -138,13 +123,13 @@ export class Patch {
           console.warn(`${failureCount} out of ${gearIds.length} gears failed to delete. Continuing with patch deletion.`);
         }
         
-        // Delete the patch itself from Firestore using Admin SDK
-        const deleted = await deletePatchAdmin(id);
+        // Delete the patch itself using our database abstraction
+        const deleted = await database.deletePatch(id);
         
         if (deleted) {
-          console.log(`Successfully deleted patch ${id} from Firestore along with ${gearIds.length - failureCount} gears`);
+          console.log(`Successfully deleted patch ${id} along with ${gearIds.length - failureCount} gears`);
         } else {
-          console.error(`Failed to delete patch ${id} from Firestore after deleting gears`);
+          console.error(`Failed to delete patch ${id} after deleting gears`);
         }
         
         return deleted;
@@ -154,15 +139,15 @@ export class Patch {
         // Attempt to delete the patch anyway, even if gear deletion had errors
         try {
           console.log(`Attempting to delete patch ${id} despite errors with gear deletion`);
-          const deleted = await deletePatchAdmin(id);
+          const deleted = await database.deletePatch(id);
           if (deleted) {
-            console.log(`Deleted patch ${id} from Firestore despite gear deletion errors`);
+            console.log(`Deleted patch ${id} despite gear deletion errors`);
           } else {
-            console.error(`Failed to delete patch ${id} from Firestore after gear deletion errors`);
+            console.error(`Failed to delete patch ${id} after gear deletion errors`);
           }
           return deleted;
         } catch (kvError) {
-          console.error(`Failed to delete patch ${id} from Firestore:`, kvError);
+          console.error(`Failed to delete patch ${id}:`, kvError);
           return false;
         }
       }
@@ -170,31 +155,15 @@ export class Patch {
   }
 
   static async findById(id: string): Promise<Patch | null> {
-    if (typeof window !== 'undefined') {
-      // Client-side: Use direct Firestore instead of API
-      try {
-        console.log(`Retrieving patch ${id} directly from Firestore`);
-        const patchData = await getPatch<PatchData>(id);
-        
-        if (patchData) {
-          console.log(`Found patch ${id} in Firestore`);
-          return new Patch(patchData);
-        }
-        return null;
-      } catch (error) {
-        console.error(`Error fetching patch ${id} from Firestore:`, error);
-        return null;
-      }
-    } else {
-      // Server-side: Use Firebase Admin SDK
-      const patchData = await getPatchAdmin<PatchData>(id);
+    try {
+      const patchData = await database.getPatch<PatchData>(id);
       
       if (patchData) {
-        console.log(`Found patch ${id} in Firestore`);
         return new Patch(patchData);
       }
-      
-      // Return null if patch not found
+      return null;
+    } catch (error) {
+      console.error(`Error fetching patch ${id}:`, error);
       return null;
     }
   }
@@ -213,7 +182,7 @@ export class Patch {
     }
 
     // Create a new subscription
-    const docRef = doc(db, 'patches', this.data.id);
+    const docRef = doc(firestoreDb, 'patches', this.data.id);
     this.unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const updatedData = docSnap.data() as PatchData;
@@ -270,44 +239,21 @@ export class Patch {
   
   // Get all patches from the store
   static async findAll(): Promise<Patch[]> {
-    if (typeof window !== 'undefined') {
-      // Client-side: Use direct Firestore instead of API
-      try {
-        console.log('Retrieving all patches directly from Firestore');
-        const patchDataList = await getAllPatches();
-        return patchDataList.map((patchData) => {
-          // Ensure the data has the required properties for PatchData
-          return new Patch({
-            id: patchData.id as string,
-            name: patchData.name as string,
-            nodes: patchData.nodes || [],
-            edges: patchData.edges || [],
-            ...(patchData as Partial<PatchData>)
-          });
-        });
-      } catch (error) {
-        console.error("Error fetching patches from Firestore:", error);
-        return [];
-      }
-    } else {
-      // Server-side: Use Firebase Admin SDK
-      const patches: Patch[] = [];
-      
-      // Get all patches from Firestore using Admin SDK
-      const patchDataList = await getAllPatchesAdmin();
-      
-      for (const patchData of patchDataList) {
+    try {
+      const patchDataList = await database.getAllPatches();
+      return patchDataList.map((patchData) => {
         // Ensure the data has the required properties for PatchData
-        patches.push(new Patch({
+        return new Patch({
           id: patchData.id as string,
           name: patchData.name as string,
           nodes: patchData.nodes || [],
           edges: patchData.edges || [],
           ...(patchData as Partial<PatchData>)
-        }));
-      }
-      
-      return patches;
+        });
+      });
+    } catch (error) {
+      console.error("Error fetching patches:", error);
+      return [];
     }
   }
 
@@ -320,7 +266,7 @@ export class Patch {
     }
 
     // Create a new subscription to the patches collection
-    const patchesRef = collection(db, 'patches');
+    const patchesRef = collection(firestoreDb, 'patches');
     const unsubscribe = onSnapshot(patchesRef, (querySnapshot) => {
       const patches: Patch[] = [];
       querySnapshot.forEach((doc) => {
@@ -338,19 +284,10 @@ export class Patch {
   async save(): Promise<void> {
     this.data.updatedAt = Date.now();
     
-    if (typeof window !== 'undefined') {
-      // Client-side: Use direct Firestore instead of API
-      try {
-        console.log(`Saving patch ${this.data.id} directly to Firestore`);
-        await savePatch(this.data.id, this.data);
-        console.log(`Successfully saved patch ${this.data.id} to Firestore`);
-      } catch (error) {
-        console.error(`Error saving patch ${this.data.id} to Firestore:`, error);
-      }
-    } else {
-      // Server-side: Use Firebase Admin SDK
-      await savePatchAdmin(this.data.id, this.data);
-      console.log(`Saved patch to Firestore (server-side): ${this.data.id}`);
+    try {
+      await database.savePatch(this.data.id, this.data);
+    } catch (error) {
+      console.error(`Error saving patch ${this.data.id}:`, error);
     }
   }
 
@@ -794,22 +731,9 @@ export class Patch {
       await this.generateDescription();
     } else {
       // Just save the visual changes
-      // If we're on the client side, use direct Firebase save instead of going through API
+      // Just use our unified database interface
       this.data.updatedAt = Date.now();
-      
-      if (typeof window !== 'undefined') {
-        try {
-          // Client-side: Save directly to Firestore
-          await savePatch(this.data.id, this.data);
-          console.log(`Saved patch directly to Firestore (client-side): ${this.data.id}`);
-        } catch (error) {
-          console.error(`Error saving patch directly to Firestore: ${this.data.id}`, error);
-          // No fallback to API - just log the error
-        }
-      } else {
-        // Server-side: Use Firebase Admin SDK
-        await this.save();
-      }
+      await this.save();
     }
   }
   

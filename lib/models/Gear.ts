@@ -1,24 +1,10 @@
-// Import client-side operations
-import { saveGear, getGear, deleteGear, getAllGears } from '../firestore';
+// Import unified database interface
+import { getDatabase, Database } from '../database';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db as firestoreDb } from '../firebase';
 
-// Import server-side operations for Node.js environment
-// Using dynamic import to avoid bundling firebase-admin code in client components
-let saveGearAdmin: (id: string, data: any) => Promise<void>;
-let getGearAdmin: <T>(id: string) => Promise<T | null>;
-let deleteGearAdmin: (id: string) => Promise<boolean>;
-let getAllGearsAdmin: () => Promise<any[]>;
-
-// Only import server functions if running on the server
-if (typeof window === 'undefined') {
-  // Using require instead of import to avoid bundling issues
-  const serverFunctions = require('../server/firestore-admin');
-  saveGearAdmin = serverFunctions.saveGearAdmin;
-  getGearAdmin = serverFunctions.getGearAdmin;
-  deleteGearAdmin = serverFunctions.deleteGearAdmin;
-  getAllGearsAdmin = serverFunctions.getAllGearsAdmin;
-}
+// Get the appropriate database implementation based on environment
+const database: Database = getDatabase();
 
 import { GearChat } from "./GearChat";
 import { Message, Role, GearInput, GearOutput, AnyMessagePart } from "./types";
@@ -128,8 +114,9 @@ export class Gear {
   }
   
   static async deleteById(id: string): Promise<boolean> {
+    // This method requires different behavior on client and server
     if (typeof window !== 'undefined') {
-      // Client-side: Use the API endpoint
+      // Client-side: Use the API endpoint for proper cleanup
       try {
         const response = await fetch(`/api/gears/${id}`, {
           method: 'DELETE',
@@ -141,43 +128,21 @@ export class Gear {
         return false;
       }
     } else {
-      // Server-side: Use Firebase Admin SDK
-      const deleted = await deleteGearAdmin(id);
-      
-      if (deleted) {
-        console.log(`Deleted gear ${id} from Firestore (server-side)`);
-      }
-      
-      return deleted;
+      // Server-side: Use our database abstraction
+      return await database.deleteGear(id);
     }
   }
 
   static async findById(id: string): Promise<Gear | null> {
-    if (typeof window !== 'undefined') {
-      // Client-side: Use direct Firestore instead of API
-      try {
-        console.log(`Retrieving gear ${id} directly from Firestore`);
-        const gearData = await getGear<GearData>(id);
-        
-        if (gearData) {
-          console.log(`Found gear ${id} in Firestore`);
-          return new Gear(gearData);
-        }
-        return null;
-      } catch (error) {
-        console.error(`Error fetching gear ${id} from Firestore:`, error);
-        return null;
-      }
-    } else {
-      // Server-side: Use Firebase Admin SDK
-      const gearData = await getGearAdmin<GearData>(id);
+    try {
+      const gearData = await database.getGear<GearData>(id);
       
       if (gearData) {
-        console.log(`Found gear ${id} in Firestore`);
         return new Gear(gearData);
       }
-      
-      // Return null if gear not found
+      return null;
+    } catch (error) {
+      console.error(`Error fetching gear ${id}:`, error);
       return null;
     }
   }
@@ -196,7 +161,7 @@ export class Gear {
     }
 
     // Create a new subscription
-    const docRef = doc(db, 'gears', this._data.id);
+    const docRef = doc(firestoreDb, 'gears', this._data.id);
     this.unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const updatedData = docSnap.data() as GearData;
@@ -342,50 +307,29 @@ export class Gear {
       debugLog("LABEL", `save() called with label = "${this._data.label}"`);
     }
     
-    if (typeof window !== 'undefined' && !this.inServerApiHandler) {
-      // Client-side: Use direct Firestore instead of API
-      // Skip if we're already inside a server API handler to avoid redundant saves
-      try {
-        console.log(`Saving gear ${this._data.id} directly to Firestore`);
-        
-        // Make a clean copy of the data to ensure it's a plain object
-        const cleanData = JSON.parse(JSON.stringify(this._data));
-        
-        // Ensure the log array is defined (never undefined/null)
-        if (!cleanData.log) {
-          cleanData.log = [];
-          console.log(`Ensuring log array exists for gear ${this._data.id}`);
-        }
-        
-        // Save directly to Firestore using client SDK
-        await saveGear(this._data.id, cleanData);
-        
-        debugLog("LABEL", `Successfully saved gear directly to Firestore with label = "${this._data.label || 'none'}"`);
-      } catch (error) {
-        console.error(`Error saving gear ${this._data.id} to Firestore:`, error);
+    try {
+      // Skip direct Firestore save if we're in a server API handler to avoid redundant saves
+      if (typeof window !== 'undefined' && this.inServerApiHandler) {
+        console.log(`Skipping direct save of gear ${this._data.id} (in server API handler)`);
+        return;
       }
-    } else {
-      // Server-side: Use Firestore directly
-      try {
-        console.log(`Saving gear ${this._data.id} to Firestore (server-side)`);
-        
-        // Make a clean copy of the data to ensure it's a plain object
-        const cleanData = JSON.parse(JSON.stringify(this._data));
-        
-        // Ensure the log array is defined (never undefined/null)
-        if (!cleanData.log) {
-          cleanData.log = [];
-          console.log(`Ensuring log array exists for gear ${this._data.id} (server-side)`);
-        }
-        
-        // Save to Firestore using the Admin SDK
-        await saveGearAdmin(this._data.id, cleanData);
-        
-        console.log(`Successfully saved gear ${this._data.id} to Firestore (server-side)`);
-      } catch (error) {
-        console.error(`Error saving to Firestore:`, error);
-        throw error; // Rethrow to ensure errors are properly propagated
+      
+      // Make a clean copy of the data to ensure it's a plain object
+      const cleanData = JSON.parse(JSON.stringify(this._data));
+      
+      // Ensure the log array is defined (never undefined/null)
+      if (!cleanData.log) {
+        cleanData.log = [];
+        console.log(`Ensuring log array exists for gear ${this._data.id}`);
       }
+      
+      // Save using our unified database interface
+      await database.saveGear(this._data.id, cleanData);
+      
+      debugLog("LABEL", `Successfully saved gear with label = "${this._data.label || 'none'}"`);
+    } catch (error) {
+      console.error(`Error saving gear ${this._data.id}:`, error);
+      throw error; // Rethrow to ensure errors are properly propagated
     }
   }
 
