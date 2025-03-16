@@ -840,36 +840,43 @@ export class Patch {
       
       // Always make the API call if client-side
       if (typeof window !== 'undefined') {
-        console.log(`Calling description API for patch ${this.id}`);
-        // Use the dedicated endpoint for patch descriptions
-        const response = await fetch(`/api/patches/${this.id}/description`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-        
-        if (!response.ok) {
-          console.error(`Error generating description: ${response.status}`);
-          return this.description; // Keep existing description if API fails
+        try {
+          console.log(`Calling description API for patch ${this.id}`);
+          // Use the dedicated endpoint for patch descriptions
+          const response = await fetch(`/api/patches/${this.id}/description`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+          
+          if (!response.ok) {
+            console.error(`Error generating description: ${response.status}`);
+            return this.description; // Keep existing description if API fails
+          }
+          
+          // Get the description from the response
+          const description = await response.text();
+          
+          // Clean up the description and limit its length
+          const cleanedDescription = description
+            .replace(/[\r\n"]+/g, '') // Remove newlines and quotes
+            .trim()
+            .substring(0, 120); // Enforce character limit
+          
+          console.log(`Generated description: "${cleanedDescription}"`);
+          this.data.description = cleanedDescription;
+          
+          // Only save if not skipped
+          if (!skipSave) {
+            await this.save();
+          }
+          
+          return cleanedDescription;
+        } catch (error) {
+          // Catch network errors specifically in the fetch call
+          console.error(`Network error when generating description for patch ${this.id}:`, error);
+          // Don't let the fetch error propagate to calling methods like addNode
+          return this.description;
         }
-        
-        // Get the description from the response
-        const description = await response.text();
-        
-        // Clean up the description and limit its length
-        const cleanedDescription = description
-          .replace(/[\r\n"]+/g, '') // Remove newlines and quotes
-          .trim()
-          .substring(0, 120); // Enforce character limit
-        
-        console.log(`Generated description: "${cleanedDescription}"`);
-        this.data.description = cleanedDescription;
-        
-        // Only save if not skipped
-        if (!skipSave) {
-          await this.save();
-        }
-        
-        return cleanedDescription;
       }
       
       return this.description; // Return existing description if server-side
