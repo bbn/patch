@@ -24,13 +24,7 @@ import { ExampleInput, GearLogEntry } from "@/lib/models/Gear";
 import { AnyMessagePart } from "@/lib/models/types";
 import { formatMessageParts, toMessageParts, extractTextFromParts } from "@/lib/utils";
 
-// Augment the GearLogEntry type to include the new message fields
-declare module '@/lib/models/Gear' {
-  interface GearLogEntry {
-    inputMessage?: AnyMessagePart[];
-    outputMessage?: AnyMessagePart[];
-  }
-}
+// Don't need to redeclare GearLogEntry - it's already declared in the model
 
 interface ChatSidebarProps {
   gearId: string;
@@ -305,13 +299,18 @@ const formatTimestamp = (timestamp: number): string => {
 };
 
 // Format input/output for display using enhanced message format
-const formatContent = (content: string | Record<string, unknown>): string => {
+const formatContent = (content: string | Record<string, unknown> | AnyMessagePart[]): string => {
   try {
     // Special handling for string that might be JSON array of message parts
     if (typeof content === 'string' && content.trim().startsWith('[{') && 
         content.includes('"type"') && content.includes('"text"')) {
       // Try direct formatting first
       return formatMessageParts(content);
+    }
+    
+    // Handle AnyMessagePart[] directly
+    if (Array.isArray(content) && content.length > 0 && 'type' in content[0]) {
+      return extractTextFromParts(content as AnyMessagePart[]);
     }
     
     // Default approach: convert to message parts, then format

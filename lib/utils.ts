@@ -180,7 +180,7 @@ export function formatMessageParts(parts: AnyMessagePart[] | string | Record<str
         case 'tool_result':
           return `[Tool Result]`;
         default:
-          return `[Unknown Part Type: ${part.type}]`;
+          return `[Unknown Part Type: ${(part as any).type || 'undefined'}]`;
       }
     }).join('\n\n');
 

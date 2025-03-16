@@ -21,7 +21,7 @@ if (typeof window === 'undefined') {
 }
 
 import { GearChat } from "./GearChat";
-import { Message, Role, GearInput, GearOutput } from "./types";
+import { Message, Role, GearInput, GearOutput, AnyMessagePart } from "./types";
 import { debugLog, isDebugLoggingEnabled } from "../utils";
 
 export interface ExampleInput {
