@@ -1,6 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { createIdGenerator, generateText, streamText } from 'ai';
-import { Gear } from "@/lib/models/Gear";
+import { Gear } from "@/lib/models/gear";
 import { GearChat } from "@/lib/models/GearChat";
 import { NextRequest } from 'next/server';
 import { Message } from "@/lib/models/types";

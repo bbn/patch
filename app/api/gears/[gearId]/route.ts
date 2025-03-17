@@ -1,4 +1,4 @@
-import { ExampleInput, Gear } from "@/lib/models/Gear";
+import { ExampleInput, Gear } from "@/lib/models/gear";
 import { Message, Role } from "@/lib/models/types";
 import { debugLog } from "@/lib/utils";
 

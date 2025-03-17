@@ -1,6 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { generateText, streamText } from 'ai';
-import { Gear } from "@/lib/models/Gear";
+import { Gear } from "@/lib/models/gear";
 import { NextRequest } from 'next/server';
 
 export const runtime = "nodejs";

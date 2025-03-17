@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { Patch } from "@/lib/models/Patch";
-import { Gear } from "@/lib/models/Gear";
+import { Patch } from "@/lib/models/patch";
+import { Gear } from "@/lib/models/gear";
 
 export const runtime = "nodejs";
 

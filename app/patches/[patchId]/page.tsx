@@ -26,8 +26,8 @@ import {
   Handle,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Patch, PatchNode, PatchEdge } from "@/lib/models/Patch";
-import { Gear, GearLogEntry } from "@/lib/models/Gear";
+import { Patch, PatchNode, PatchEdge } from "@/lib/models/patch";
+import { Gear, GearLogEntry } from "@/lib/models/gear";
 import { onSnapshot, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 

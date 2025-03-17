@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Patch } from "@/lib/models/Patch";
+import { Patch } from "@/lib/models/patch";
 
 export async function GET(request: NextRequest) {
   try {

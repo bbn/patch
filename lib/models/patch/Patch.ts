@@ -55,6 +55,27 @@ export class Patch {
       return null;
     }
   }
+  
+  // Add static deleteById method that delegates to the utility function
+  static async deleteById(id: string): Promise<boolean> {
+    // Import the deleteById function from utils
+    const { deleteById } = await import('./utils');
+    return deleteById(id);
+  }
+  
+  // Add static findAll method that delegates to the utility function
+  static async findAll(): Promise<Patch[]> {
+    // Import the findAll function from utils
+    const { findAll } = await import('./utils');
+    return findAll();
+  }
+  
+  // Add static generateAllDescriptions method that delegates to the utility function
+  static async generateAllDescriptions(): Promise<number> {
+    // Import the generateAllDescriptions function from utils
+    const { generateAllDescriptions } = await import('./utils');
+    return generateAllDescriptions();
+  }
 
   // Subscribe to real-time updates for a patch
   // This should be called on client-side only

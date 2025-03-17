@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Patch } from "@/lib/models/Patch";
+import { Patch } from "@/lib/models/patch";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";

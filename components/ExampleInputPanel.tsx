@@ -17,7 +17,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ExampleInput } from "@/lib/models/Gear";
+import { ExampleInput } from "@/lib/models/gear";
 
 interface ExampleInputPanelProps {
   gearId: string;

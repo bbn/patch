@@ -9,7 +9,7 @@ const database: Database = getDatabase();
 import { GearChat } from "../GearChat";
 import { Message, Role, GearInput, GearOutput } from "../types";
 import { debugLog, isDebugLoggingEnabled } from "../../utils";
-import { GearData, ExampleInput } from "./types";
+import { GearData, ExampleInput, GearLogEntry } from "./types";
 import { processWithLLM, processWithSpecialPrompt } from "./processing";
 import { addExampleInput as addExampleInputFn, updateExampleInput, deleteExampleInput, processExampleInput as processExampleInputFn } from "./examples";
 import { logInfo, logError, logWarning, logDebug } from "../../logger";
@@ -113,6 +113,16 @@ export class Gear {
     } catch (error) {
       logError("Gear", `Error fetching gear ${id}:`, error);
       return null;
+    }
+  }
+
+  static async findAll(): Promise<Gear[]> {
+    try {
+      const gearsData = await database.getAllGears();
+      return gearsData.map(gearData => new Gear(gearData as GearData));
+    } catch (error) {
+      logError("Gear", "Error fetching all gears:", error);
+      return [];
     }
   }
 
@@ -251,6 +261,16 @@ export class Gear {
   get messages() {
     return this._data.messages;
   }
+  
+  async setMessages(messages: Message[], skipSave = false) {
+    this._data.messages = messages;
+    // Make sure the chat instance uses the updated messages
+    this.chat = new GearChat(this._data.messages, this._data.id);
+    if (!skipSave) {
+      await this.save();
+    }
+  }
+  
   get createdAt() {
     return this._data.createdAt;
   }

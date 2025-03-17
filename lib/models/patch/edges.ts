@@ -193,63 +193,6 @@ export async function updateEdge(patch: Patch, id: string, updates: Partial<Patc
  * Remove an edge from a patch
  */
 export async function removeEdge(patch: Patch, id: string): Promise<boolean> {
-  const edgeToRemove = patch.edges.find(edge => edge.id === id);
-  if (!edgeToRemove) return false;
-  
-  // First update the edge list without saving
-  const initialLength = patch.edges.length;
-  patch.edges = patch.edges.filter(edge => edge.id !== id);
-  
-  if (patch.edges.length >= initialLength) {
-    console.log(`No edge with ID ${id} found in patch ${patch.id}`);
-    return false;
-  }
-  
-  // Use batch updates for the source gear to avoid multiple API calls
-  try {
-    const sourceNode = patch.nodes.find(node => node.id === edgeToRemove.source);
-    const targetNode = patch.nodes.find(node => node.id === edgeToRemove.target);
-    
-    if (sourceNode && targetNode) {
-      const sourceGear = await Gear.findById(sourceNode.data.gearId);
-      if (sourceGear) {
-        console.log(`Updating source gear ${sourceGear.id} to remove connection`);
-        
-        // Start batch update to avoid individual saves
-        sourceGear.startBatchUpdate();
-        
-        // Remove URL without saving
-        const targetGearUrl = `/api/gears/${targetNode.data.gearId}`;
-        const urlWasRemoved = await sourceGear.removeOutputUrl(targetGearUrl, true);
-        
-        if (urlWasRemoved) {
-          // Only generate new description if connection was actually removed
-          console.log(`Connection removed from ${sourceGear.id} to ${targetNode.data.gearId}`);
-          
-          // Complete batch update with a single save
-          await sourceGear.completeBatchUpdate(true);
-        } else {
-          // If URL wasn't found, just cancel the batch
-          sourceGear.skipDescriptionUpdates = false;
-          console.log(`No connection found from ${sourceGear.id} to ${targetNode.data.gearId}`);
-        }
-      }
-    }
-    
-    // Save the patch (will save edge changes)
-    await patch.save();
-    
-    // Only generate description if we actually removed an edge and have more than one node
-    if (patch.nodes.length > 1) {
-      // Generate a new description when an edge is removed, as it changes the functionality
-      await patch.generateDescription();
-    }
-    
-    return true;
-  } catch (error) {
-    console.error(`Error removing edge ${id}:`, error);
-    // Still save the edge change even if gear update failed
-    await patch.save();
-    return true;
-  }
+  // Call the removeEdge method on the patch instance
+  return patch.removeEdge(id);
 }

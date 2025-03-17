@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/accordion";
 
 import { ExampleInputPanel } from "./ExampleInputPanel";
-import { ExampleInput, GearLogEntry } from "@/lib/models/Gear";
+import { ExampleInput, GearLogEntry } from "@/lib/models/gear";
 import { AnyMessagePart } from "@/lib/models/types";
 import { formatMessageParts, toMessageParts, extractTextFromParts } from "@/lib/utils";
 

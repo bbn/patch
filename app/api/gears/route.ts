@@ -1,6 +1,6 @@
-import { Gear } from "@/lib/models/Gear";
+import { Gear } from "@/lib/models/gear";
 import { Message, Role } from "@/lib/models/types";
-import { Patch } from "@/lib/models/Patch";
+import { Patch } from "@/lib/models/patch";
 
 export const runtime = "nodejs";
 

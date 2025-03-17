@@ -44,19 +44,6 @@ export async function updateNode(patch: Patch, id: string, updates: Partial<Patc
  * Remove a node from a patch
  */
 export async function removeNode(patch: Patch, id: string): Promise<boolean> {
-  const initialLength = patch.nodes.length;
-  patch.nodes = patch.nodes.filter(node => node.id !== id);
-  
-  // Also remove any edges connected to this node
-  patch.edges = patch.edges.filter(
-    edge => edge.source !== id && edge.target !== id
-  );
-  
-  // Generate a new description when nodes are removed, as functionality might change
-  if (patch.nodes.length < initialLength) {
-    await patch.generateDescription();
-  }
-  
-  await patch.save();
-  return patch.nodes.length < initialLength;
+  // Call the removeNode method on the patch instance
+  return patch.removeNode(id);
 }
