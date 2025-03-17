@@ -12,6 +12,7 @@ import { debugLog, isDebugLoggingEnabled } from "../../utils";
 import { GearData, ExampleInput } from "./types";
 import { processWithLLM, processWithSpecialPrompt } from "./processing";
 import { addExampleInput as addExampleInputFn, updateExampleInput, deleteExampleInput, processExampleInput as processExampleInputFn } from "./examples";
+import { logInfo, logError, logWarning, logDebug } from "../../logger";
 
 export class Gear {
   // Changed to protected to allow access from subclasses but not directly from outside
@@ -34,7 +35,7 @@ export class Gear {
 
   constructor(data: Partial<GearData> & { id: string }) {
     // Add diagnostic logging to understand what methods are available
-    console.log("Gear constructor called, available methods:", 
+    logDebug("Gear", "Constructor called, available methods:", 
       Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
     
     this._data = {
@@ -92,7 +93,7 @@ export class Gear {
         
         return response.ok;
       } catch (error) {
-        console.error(`Error deleting gear ${id}:`, error);
+        logError("Gear", `Error deleting gear ${id}:`, error);
         return false;
       }
     } else {
@@ -110,7 +111,7 @@ export class Gear {
       }
       return null;
     } catch (error) {
-      console.error(`Error fetching gear ${id}:`, error);
+      logError("Gear", `Error fetching gear ${id}:`, error);
       return null;
     }
   }
@@ -119,7 +120,7 @@ export class Gear {
   // This should be called on client-side only
   subscribeToUpdates(callback: (gear: Gear) => void): () => void {
     if (typeof window === 'undefined') {
-      console.warn('subscribeToUpdates should only be called on the client side');
+      logWarning("Gear", 'subscribeToUpdates should only be called on the client side');
       return () => {};
     }
 
@@ -141,7 +142,7 @@ export class Gear {
         callback(this);
       }
     }, (error) => {
-      console.error(`Error in real-time updates for gear ${this._data.id}:`, error);
+      logError("Gear", `Error in real-time updates for gear ${this._data.id}:`, error);
     });
 
     // Return the unsubscribe function
@@ -189,7 +190,7 @@ export class Gear {
   async save(): Promise<void> {
     // Ensure data is not null and has required fields
     if (!this._data || !this._data.id) {
-      console.error("Cannot save gear: data or id is missing");
+      logError("Gear", "Cannot save gear: data or id is missing");
       throw new Error("Cannot save gear: data or id is missing");
     }
     
@@ -204,7 +205,7 @@ export class Gear {
     this._data.updatedAt = Date.now();
     
     // Keep only critical logs for production, use debug logging for verbose output
-    console.log(`Saving gear ${this._data.id}`);
+    logInfo("Gear", `Saving gear ${this._data.id}`);
     
     // Use conditional debug logging for verbose output
     debugLog("GEAR-SAVE", `Saving gear ${this._data.id} with ${this._data.log?.length || 0} log entries`);
@@ -217,7 +218,7 @@ export class Gear {
     try {
       // Skip direct Firestore save if we're in a server API handler to avoid redundant saves
       if (typeof window !== 'undefined' && this.inServerApiHandler) {
-        console.log(`Skipping direct save of gear ${this._data.id} (in server API handler)`);
+        logInfo("Gear", `Skipping direct save of gear ${this._data.id} (in server API handler)`);
         return;
       }
       
@@ -227,7 +228,7 @@ export class Gear {
       // Ensure the log array is defined (never undefined/null)
       if (!cleanData.log) {
         cleanData.log = [];
-        console.log(`Ensuring log array exists for gear ${this._data.id}`);
+        logInfo("Gear", `Ensuring log array exists for gear ${this._data.id}`);
       }
       
       // Save using our unified database interface
@@ -235,7 +236,7 @@ export class Gear {
       
       debugLog("LABEL", `Successfully saved gear with label = "${this._data.label || 'none'}"`);
     } catch (error) {
-      console.error(`Error saving gear ${this._data.id}:`, error);
+      logError("Gear", `Error saving gear ${this._data.id}:`, error);
       throw error; // Rethrow to ensure errors are properly propagated
     }
   }

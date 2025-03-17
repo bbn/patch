@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Gear, GearLogEntry } from '@/lib/models/Gear';
 import { AnyMessagePart } from '@/lib/models/types';
 import { formatMessageParts, toMessageParts, extractTextFromParts } from '@/lib/utils';
+import { logInfo, logError } from '@/lib/logger';
 
 // Don't need to redeclare GearLogEntry - it's already declared in the model
 
@@ -44,9 +45,9 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
           setLogEntries(loadedGear.log || []);
           
           // Set up real-time updates
-          console.log(`Setting up real-time updates for gear ${gearId}`);
+          logInfo("GearTester", `Setting up real-time updates for gear ${gearId}`);
           unsubscribe = loadedGear.subscribeToUpdates((updatedGear) => {
-            console.log(`Received real-time update for gear ${gearId}`);
+            logInfo("GearTester", `Received real-time update for gear ${gearId}`);
             setGear(updatedGear);
             
             // Update output if it changed
@@ -56,18 +57,18 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
             
             // Always update log entries, ensuring it's an array
             const logEntries = updatedGear.log || [];
-            console.log(`Updated log entries for gear ${gearId}: ${logEntries.length} entries`);
+            logInfo("GearTester", `Updated log entries for gear ${gearId}: ${logEntries.length} entries`);
             
             // Always update log entries, even if empty, to ensure UI reflects current state
             setLogEntries(prevLogEntries => {
               const hasChanged = JSON.stringify(prevLogEntries) !== JSON.stringify(logEntries);
-              console.log(`Log entries ${hasChanged ? 'CHANGED' : 'unchanged'} (current: ${prevLogEntries.length}, new: ${logEntries.length})`);
+              logInfo("GearTester", `Log entries ${hasChanged ? 'CHANGED' : 'unchanged'} (current: ${prevLogEntries.length}, new: ${logEntries.length})`);
               return logEntries;
             });
           });
         }
       } catch (err) {
-        console.error('Error loading gear:', err);
+        logError("GearTester", 'Error loading gear:', err);
         setError('Failed to load gear data');
       }
     };
@@ -77,7 +78,7 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
     // Cleanup subscription on unmount
     return () => {
       if (unsubscribe) {
-        console.log(`Cleaning up subscription for gear ${gearId}`);
+        logInfo("GearTester", `Cleaning up subscription for gear ${gearId}`);
         unsubscribe();
       }
     };
@@ -111,7 +112,7 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
       // We don't need to reload the gear here since we have real-time updates
       // The subscription will handle updating the state when the log is updated
     } catch (err: any) {
-      console.error('Error processing input:', err);
+      logError('GearTester', 'Error processing input:', err);
       setError(err.message || 'Failed to process input');
     } finally {
       setLoading(false);
@@ -172,7 +173,7 @@ export const GearTester: React.FC<GearTesterProps> = ({ gearId }) => {
       const messageParts = toMessageParts(content);
       return formatMessageParts(messageParts);
     } catch (e) {
-      console.error('Error formatting content:', e);
+      logError('GearTester', 'Error formatting content:', e);
       // Fallback to simple stringification
       return typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     }
