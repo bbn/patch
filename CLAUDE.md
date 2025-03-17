@@ -29,6 +29,13 @@
 - Pages in `/app` (Next.js App Router)
 - ReactFlow for node-based interfaces
 
+## Module Structure
+- Large models should be split into smaller, focused modules:
+  - Core class files with primary functionality
+  - Interface/type definitions in separate files
+  - Feature-specific functionality in separate modules
+  - Utility functions extracted to shared modules
+
 ## Linting
 - ESLint with Next.js recommended rules
 - TypeScript ESLint plugin with unused vars as warnings
