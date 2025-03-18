@@ -99,14 +99,23 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
     );
   }
   
-  // Truncate label if it's too long to fit in the node
-  const displayLabel = gearLabel.length > 25 
-    ? gearLabel.substring(0, 22) + '...' 
-    : gearLabel;
+  // Auto-adjust node size based on label length
+  // Assuming average character width of 8px in the current font
+  const charWidth = 8;
+  const basePadding = 32; // 16px padding on each side 
+  const minWidth = 160; // Minimum width in px
+  
+  // Calculate width needed for the text (with some minimal padding)
+  const textWidth = gearLabel.length * charWidth + basePadding;
+  // Use the larger of the minimum width or the calculated width
+  const nodeWidth = Math.max(minWidth, textWidth);
+  // Convert to tailwind-style width class or use inline style
+  const widthStyle = { width: `${nodeWidth}px` };
   
   return (
     <div 
-      className={`rounded-lg bg-white border-2 p-4 w-40 h-20 flex items-center justify-center transition-all duration-300 ${
+      style={widthStyle}
+      className={`rounded-lg bg-white border-2 p-4 h-20 flex items-center justify-center transition-all duration-300 ${
         isProcessing 
           ? "border-blue-500 shadow-md shadow-blue-200 animate-pulse" 
           : "border-gray-200"
@@ -117,8 +126,10 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
         position={Position.Top}
         isConnectable={isConnectable}
       />
-      <div className="text-center text-sm truncate max-w-[140px]" title={gearLabel}>
-        {displayLabel}
+      <div className="text-center text-sm" 
+           style={{ maxWidth: `${nodeWidth - basePadding}px` }}
+           title={gearLabel}>
+        {gearLabel}
       </div>
       <Handle
         type="source"
@@ -821,13 +832,14 @@ export default function PatchPage() {
       y: event.clientY
     } as any);
     
-    // Node dimensions (must match the GearNode component dimensions)
-    const nodeWidth = 160;
+    // Node dimensions - only height is fixed, width is now dynamic
+    // Use minimum width for initial placement
+    const minNodeWidth = 160;
     const nodeHeight = 80;
     
     // Add gear at the exact position, centered on cursor
     addGearNode({
-      x: position.x - (nodeWidth / 2),
+      x: position.x - (minNodeWidth / 2),
       y: position.y - (nodeHeight / 2)
     });
     
