@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1253,10 +1254,33 @@ export default function PatchPage() {
   }, [nodes.length, edges.length]);
 
   return (
-    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
-      <div className="flex-1 pr-4">
-        <Card className="h-full">
-          <CardHeader className="flex flex-row items-center justify-between">
+    <div className="h-screen w-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        onInit={(instance) => {
+          console.log("ReactFlow initialized");
+          console.log("Initial nodes:", nodes);
+          console.log("Initial edges:", edges);
+          setReactFlowInstance(instance as any);
+        }}
+        nodesDraggable={true}
+        fitView={false}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        proOptions={{ hideAttribution: true }}
+        defaultEdgeOptions={{ type: 'default' }}
+      >
+        <Panel position="top-left" className="bg-white p-2 rounded shadow-md m-2">
+          <div className="flex items-center">
             <div>
               {isEditingName ? (
                 <div className="w-full max-w-xs">
@@ -1271,12 +1295,13 @@ export default function PatchPage() {
                   />
                 </div>
               ) : (
-                <CardTitle 
-                  onClick={startEditingName}
-                  className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+                <h1 
+                  className="text-xl font-bold cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
                 >
-                  {patchName}
-                </CardTitle>
+                  <Link href="/" className="text-gray-500 hover:text-gray-700">patch.land</Link>
+                  <span className="text-gray-500 mx-2">›</span>
+                  <span onClick={startEditingName}>{patchName}</span>
+                </h1>
               )}
               {!isLoading && (
                 <div className="text-gray-500 text-sm mt-1 px-2">
@@ -1284,43 +1309,16 @@ export default function PatchPage() {
                 </div>
               )}
             </div>
-          </CardHeader>
-          <CardContent className="h-[calc(100%-5rem)]">
-            <div className="h-full w-full">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onConnectStart={onConnectStart}
-                onConnectEnd={onConnectEnd}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                onInit={(instance) => {
-                  console.log("ReactFlow initialized");
-                  console.log("Initial nodes:", nodes);
-                  console.log("Initial edges:", edges);
-                  setReactFlowInstance(instance as any);
-                }}
-                nodesDraggable={true}
-                fitView={false}
-                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                proOptions={{ hideAttribution: true }}
-                defaultEdgeOptions={{ type: 'default' }}
-              >
-                <Controls />
-                <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-              </ReactFlow>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </Panel>
+        
+        <Controls />
+        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+      </ReactFlow>
+      
       {selectedNode && (
-        <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
-          <div className="mb-2 py-2 flex justify-between items-start">
+        <div className="absolute top-0 right-0 w-1/3 h-full bg-white border-l shadow-lg">
+          <div className="py-2 px-4 border-b flex justify-between items-start">
             <div>
               <h3 className="text-lg font-semibold truncate max-w-full" title={selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
                 {selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
@@ -1361,7 +1359,7 @@ export default function PatchPage() {
               </svg>
             </Button>
           </div>
-          <div className="flex-grow overflow-hidden h-[calc(100%-3rem)]">
+          <div className="h-[calc(100%-4rem)] overflow-hidden">
             <ChatSidebar
               gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
               initialMessages={gearMessages}
