@@ -1051,35 +1051,12 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
-      // Set processing state for this gear
-      setProcessingGears(prev => {
-        const newSet = new Set(prev);
-        newSet.add(gearId);
-        return newSet;
-      });
-      
-      // Update the node to show processing animation
-      setNodes(nodes => 
-        nodes.map(n => {
-          if (n.data.gearId === gearId) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                isProcessing: true
-              }
-            };
-          }
-          return n;
-        })
-      );
-      
       // Get the gear to access its outputUrls
       const gear = selectedGear || await Gear.findById(gearId);
       if (gear) {
         // Call the API directly without the no_forward parameter
         // This allows forwarding to connected gears
-        console.log(`Processing and forwarding example output from ${gear.label} (${gear.id})`);
+        console.log(`Forwarding example output from ${gear.label} (${gear.id})`);
         
         // For the "Send Output" button case:
         // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
@@ -1101,29 +1078,6 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error sending example output:", error);
-    } finally {
-      // Clear processing state
-      setProcessingGears(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(gearId);
-        return newSet;
-      });
-      
-      // Update the node to remove processing animation
-      setNodes(nodes => 
-        nodes.map(n => {
-          if (n.data.gearId === gearId) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                isProcessing: false
-              }
-            };
-          }
-          return n;
-        })
-      );
     }
   };
 
