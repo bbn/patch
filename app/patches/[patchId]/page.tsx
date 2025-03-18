@@ -1297,6 +1297,9 @@ export default function PatchPage() {
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{ type: 'default' }}
+        panOnScroll={true}
+        zoomOnScroll={false}
+        zoomActivationKey="Meta"
       >
         <Panel position="top-left" className="p-2 rounded shadow-md m-2" style={{ backgroundColor: panelBgColor }}>
           <div className="flex items-center">
