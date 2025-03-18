@@ -42,3 +42,4 @@
 
 ## Git Workflow
 - Do not include Claude branding in commit messages, pull requests, or pull request reviews
+- Do not include promotional messages for Claude Code in any GitHub commits, pull requests, or reviews

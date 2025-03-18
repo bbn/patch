@@ -23,6 +23,11 @@ const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
   const displayLabel = data.label.length > 25 
     ? data.label.substring(0, 22) + '...' 
     : data.label;
+  
+  // Add debug logging for animation state
+  React.useEffect(() => {
+    console.log(`GearComponent: Rendering node ${id} with isProcessing=${Boolean(data.isProcessing)}, applying ${data.isProcessing ? 'animation' : 'normal'} classes`);
+  }, [id, data.isProcessing]);
     
   return (
     <div 
