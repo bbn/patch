@@ -137,6 +137,7 @@ export default function PatchPage() {
   const [patchDescription, setPatchDescription] = useState<string>("");
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const flowContainerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
   const [logEntries, setLogEntries] = useState<GearLogEntry[]>([]);
@@ -1162,48 +1163,75 @@ export default function PatchPage() {
   }, [reactFlowInstance, nodes.length]);
   
   // Custom wheel event handler for Figma-like behavior
-  const handleWheel = useCallback((event: React.WheelEvent) => {
+  const handleWheel = useCallback((event: WheelEvent) => {
+    // Early return if reactFlowInstance is not available
     if (!reactFlowInstance) return;
     
+    // Prevent default scrolling behavior
     event.preventDefault();
     
-    // If Command/Meta key is pressed, handle zooming
-    if (commandKeyPressed) {
-      const delta = event.deltaY < 0 ? 1.1 : 0.9;
+    // Use requestAnimationFrame to avoid React rendering conflicts
+    requestAnimationFrame(() => {
+      try {
+        // If Command/Meta key is pressed, handle zooming
+        if (commandKeyPressed) {
+          const delta = event.deltaY < 0 ? 1.1 : 0.9;
+          
+          // Get the current viewport
+          const { x, y, zoom } = reactFlowInstance.getViewport();
+          
+          // Calculate new zoom level with bounds check
+          const newZoom = Math.max(0.1, Math.min(zoom * delta, 10));
+          
+          // Get the cursor position in the viewport
+          const container = flowContainerRef.current;
+          if (!container) return;
+          
+          const rect = container.getBoundingClientRect();
+          const clientX = event.clientX - rect.left;
+          const clientY = event.clientY - rect.top;
+          
+          // Convert client coordinates to flow coordinates
+          const flowPos = reactFlowInstance.screenToFlowPosition({
+            x: clientX,
+            y: clientY,
+          });
+          
+          // Calculate new position to zoom towards cursor
+          const newX = flowPos.x - (flowPos.x - x / zoom) * newZoom;
+          const newY = flowPos.y - (flowPos.y - y / zoom) * newZoom;
+          
+          // Set the new viewport
+          reactFlowInstance.setViewport({ x: newX, y: newY, zoom: newZoom });
+        } else {
+          // Otherwise, handle panning
+          const { x, y, zoom } = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport({
+            x: x - event.deltaX,
+            y: y - event.deltaY,
+            zoom,
+          });
+        }
+      } catch (error) {
+        console.error("Error during wheel interaction:", error);
+      }
+    });
+  }, [reactFlowInstance, commandKeyPressed, flowContainerRef]);
+  
+  // Setup non-passive wheel event listener
+  useEffect(() => {
+    const container = flowContainerRef.current;
+    
+    if (container && reactFlowInstance) {
+      // Add non-passive wheel event listener
+      container.addEventListener('wheel', handleWheel, { passive: false });
       
-      // Get the current viewport
-      const { x, y, zoom } = reactFlowInstance.getViewport();
-      
-      // Calculate new zoom level
-      const newZoom = zoom * delta;
-      
-      // Get the cursor position in the viewport
-      const rect = event.currentTarget.getBoundingClientRect();
-      const clientX = event.clientX - rect.left;
-      const clientY = event.clientY - rect.top;
-      
-      // Convert client coordinates to flow coordinates
-      const flowPos = reactFlowInstance.screenToFlowPosition({
-        x: clientX,
-        y: clientY,
-      });
-      
-      // Calculate new position to zoom towards cursor
-      const newX = flowPos.x - (flowPos.x - x / zoom) * newZoom;
-      const newY = flowPos.y - (flowPos.y - y / zoom) * newZoom;
-      
-      // Set the new viewport
-      reactFlowInstance.setViewport({ x: newX, y: newY, zoom: newZoom });
-    } else {
-      // Otherwise, handle panning
-      const { x, y, zoom } = reactFlowInstance.getViewport();
-      reactFlowInstance.setViewport({
-        x: x - event.deltaX,
-        y: y - event.deltaY,
-        zoom,
-      });
+      // Cleanup function
+      return () => {
+        container.removeEventListener('wheel', handleWheel);
+      };
     }
-  }, [reactFlowInstance, commandKeyPressed]);
+  }, [handleWheel, reactFlowInstance]);
   
   // We no longer need to listen for gear label changes
   // Each GearNode component gets its label directly from Firestore
@@ -1344,7 +1372,7 @@ export default function PatchPage() {
     <div className="h-screen w-full">
       <div 
         className="h-full w-full" 
-        onWheel={handleWheel}
+        ref={flowContainerRef}
       >
         <ReactFlow
           nodes={nodes}
