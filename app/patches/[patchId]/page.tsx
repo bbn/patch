@@ -63,6 +63,7 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
           
           // Update processing state from Firebase
           const newProcessingState = Boolean(gearData.isProcessing);
+          console.log(`GearNode: Processing state check for ${data.gearId} - isProcessing in Firebase: ${newProcessingState}, current state: ${isProcessing}, raw value: ${gearData.isProcessing}`);
           if (newProcessingState !== isProcessing) {
             console.log(`GearNode: Updated processing state for ${data.gearId} to ${newProcessingState}`);
             setIsProcessing(newProcessingState);
@@ -1282,27 +1283,26 @@ export default function PatchPage() {
         <Panel position="top-left" className="bg-white p-2 rounded shadow-md m-2">
           <div className="flex items-center">
             <div>
-              {isEditingName ? (
-                <div className="w-full max-w-xs">
+              <h1 
+                className="text-xl font-bold cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              >
+                <Link href="/" className="text-gray-500 hover:text-gray-700">patch.land</Link>
+                <span className="text-gray-500 mx-2">›</span>
+                {isEditingName ? (
                   <Input
                     ref={nameInputRef}
                     value={patchName}
                     onChange={(e) => setPatchName(e.target.value)}
                     onBlur={savePatchName}
                     onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
-                    className="font-semibold text-xl"
+                    className="font-semibold text-xl inline-block w-auto min-w-[150px] m-0 p-0 h-[28px] align-baseline"
+                    style={{ margin: 0, verticalAlign: 'baseline' }}
                     autoFocus
                   />
-                </div>
-              ) : (
-                <h1 
-                  className="text-xl font-bold cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-                >
-                  <Link href="/" className="text-gray-500 hover:text-gray-700">patch.land</Link>
-                  <span className="text-gray-500 mx-2">›</span>
+                ) : (
                   <span onClick={startEditingName}>{patchName}</span>
-                </h1>
-              )}
+                )}
+              </h1>
               {!isLoading && (
                 <div className="text-gray-500 text-sm mt-1 px-2">
                   {patchDescription || "No description"}
