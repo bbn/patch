@@ -160,6 +160,30 @@ export default function PatchPage() {
   const [unsubscribePatch, setUnsubscribePatch] = useState<(() => void) | null>(null);
   const [selectedGear, setSelectedGear] = useState<Gear | null>(null);
   const [unsubscribeGear, setUnsubscribeGear] = useState<(() => void) | null>(null);
+  const [commandKeyPressed, setCommandKeyPressed] = useState<boolean>(false);
+  
+  // Set up event listeners for Command key detection
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Meta' || event.key === 'Command') {
+        setCommandKeyPressed(true);
+      }
+    };
+    
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Meta' || event.key === 'Command') {
+        setCommandKeyPressed(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
   
   // Deterministic color based on patchId to avoid hydration mismatch
   const [panelBgColor] = useState(() => {
@@ -1137,6 +1161,50 @@ export default function PatchPage() {
     }
   }, [reactFlowInstance, nodes.length]);
   
+  // Custom wheel event handler for Figma-like behavior
+  const handleWheel = useCallback((event: React.WheelEvent) => {
+    if (!reactFlowInstance) return;
+    
+    event.preventDefault();
+    
+    // If Command/Meta key is pressed, handle zooming
+    if (commandKeyPressed) {
+      const delta = event.deltaY < 0 ? 1.1 : 0.9;
+      
+      // Get the current viewport
+      const { x, y, zoom } = reactFlowInstance.getViewport();
+      
+      // Calculate new zoom level
+      const newZoom = zoom * delta;
+      
+      // Get the cursor position in the viewport
+      const rect = event.currentTarget.getBoundingClientRect();
+      const clientX = event.clientX - rect.left;
+      const clientY = event.clientY - rect.top;
+      
+      // Convert client coordinates to flow coordinates
+      const flowPos = reactFlowInstance.screenToFlowPosition({
+        x: clientX,
+        y: clientY,
+      });
+      
+      // Calculate new position to zoom towards cursor
+      const newX = flowPos.x - (flowPos.x - x / zoom) * newZoom;
+      const newY = flowPos.y - (flowPos.y - y / zoom) * newZoom;
+      
+      // Set the new viewport
+      reactFlowInstance.setViewport({ x: newX, y: newY, zoom: newZoom });
+    } else {
+      // Otherwise, handle panning
+      const { x, y, zoom } = reactFlowInstance.getViewport();
+      reactFlowInstance.setViewport({
+        x: x - event.deltaX,
+        y: y - event.deltaY,
+        zoom,
+      });
+    }
+  }, [reactFlowInstance, commandKeyPressed]);
+  
   // We no longer need to listen for gear label changes
   // Each GearNode component gets its label directly from Firestore
   
@@ -1274,32 +1342,38 @@ export default function PatchPage() {
 
   return (
     <div className="h-screen w-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
-        onNodeClick={onNodeClick}
-        onPaneClick={onPaneClick}
-        onInit={(instance) => {
-          console.log("ReactFlow initialized");
-          console.log("Initial nodes:", nodes);
-          console.log("Initial edges:", edges);
-          setReactFlowInstance(instance as any);
-        }}
-        nodesDraggable={true}
-        fitView={false}
-        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-        proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{ type: 'default' }}
-        panOnScroll={true}
-        zoomOnScroll={false}
-        zoomActivationKey="Meta"
+      <div 
+        className="h-full w-full" 
+        onWheel={handleWheel}
+      >
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          onInit={(instance) => {
+            console.log("ReactFlow initialized");
+            console.log("Initial nodes:", nodes);
+            console.log("Initial edges:", edges);
+            setReactFlowInstance(instance as any);
+          }}
+          nodesDraggable={true}
+          fitView={false}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          proOptions={{ hideAttribution: true }}
+          defaultEdgeOptions={{ type: 'default' }}
+          panOnScroll={false}
+          zoomOnScroll={false}
+          zoomOnPinch={true}
+          selectionKeyCode="Shift"
+          multiSelectionKeyCode="Control"
       >
         <Panel position="top-left" className="p-2 rounded shadow-md m-2" style={{ backgroundColor: panelBgColor }}>
           <div className="flex items-center">
@@ -1335,7 +1409,8 @@ export default function PatchPage() {
         
         <Controls />
         <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-      </ReactFlow>
+        </ReactFlow>
+      </div>
       
       {selectedNode && (
         <div className="absolute top-0 right-0 w-1/3 h-full border-l shadow-lg" style={{ backgroundColor: panelBgColor }}>
