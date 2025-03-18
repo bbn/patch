@@ -161,14 +161,21 @@ export default function PatchPage() {
   const [selectedGear, setSelectedGear] = useState<Gear | null>(null);
   const [unsubscribeGear, setUnsubscribeGear] = useState<(() => void) | null>(null);
   
-  // Generate a random pale but saturated background color for the panel
+  // Deterministic color based on patchId to avoid hydration mismatch
   const [panelBgColor] = useState(() => {
-    // Generate a random hue (0-360)
-    const hue = Math.floor(Math.random() * 360);
-    // High saturation (70-90%)
-    const saturation = Math.floor(70 + Math.random() * 20);
-    // High lightness for paleness (85-95%)
-    const lightness = Math.floor(85 + Math.random() * 10);
+    // We need to create a deterministic color based on the patchId to avoid hydration errors
+    // Use a simple hash of the patchId to derive a color
+    let hash = 0;
+    for (let i = 0; i < patchId.length; i++) {
+      hash = patchId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert hash to a hue (0-360)
+    const hue = Math.abs(hash % 360);
+    // Fixed saturation and lightness to ensure pale but saturated colors
+    const saturation = 80;
+    const lightness = 90;
+    
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   });
   
