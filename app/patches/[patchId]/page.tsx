@@ -172,11 +172,11 @@ export default function PatchPage() {
     
     // Convert hash to a hue (0-360)
     const hue = Math.abs(hash % 360);
-    // Fixed saturation and lightness to ensure pale but saturated colors
-    const saturation = 80;
-    const lightness = 90;
+    // Keep high saturation but increase lightness for a very pale appearance
+    const saturation = 95;
+    const lightness = 95;
     
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.9)`;
   });
   
   // Track if we're currently connecting nodes
