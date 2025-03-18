@@ -34,10 +34,6 @@ export class Gear {
   pendingChanges = false;
 
   constructor(data: Partial<GearData> & { id: string }) {
-    // Add diagnostic logging to understand what methods are available
-    logDebug("Gear", "Constructor called, available methods:", 
-      Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
-    
     this._data = {
       id: data.id,
       outputUrls: data.outputUrls || [],
@@ -52,6 +48,7 @@ export class Gear {
       patchId: data.patchId,
       nodeId: data.nodeId,
       position: data.position,
+      isProcessing: data.isProcessing || false,
     };
     this.chat = new GearChat(this._data.messages, this._data.id);
   }
@@ -346,6 +343,18 @@ export class Gear {
   
   get log() {
     return this._data.log || [];
+  }
+
+  get isProcessing() {
+    return this._data.isProcessing || false;
+  }
+  
+  async setIsProcessing(value: boolean, skipSave = false) {
+    console.log(`Setting isProcessing=${value} for gear ${this.id}`);
+    this._data.isProcessing = value;
+    if (!skipSave) {
+      await this.save();
+    }
   }
 
   // Explicitly define the method on the prototype to ensure it's always available
