@@ -118,7 +118,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'chat' | 'examples' | 'log'>('chat');
 
   return (
-    <div className="w-full h-full flex flex-col bg-white text-sm">
+    <div className="w-full h-full flex flex-col text-sm">
       
       {/* Tabs */}
       <div className="p-2 border-b flex justify-center">

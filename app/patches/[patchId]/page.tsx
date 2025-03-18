@@ -172,11 +172,11 @@ export default function PatchPage() {
     
     // Convert hash to a hue (0-360)
     const hue = Math.abs(hash % 360);
-    // Keep high saturation but increase lightness for a very pale appearance
+    // Keep high saturation but increase lightness even more for an extremely pale appearance
     const saturation = 95;
-    const lightness = 95;
+    const lightness = 98;
     
-    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.9)`;
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.85)`;
   });
   
   // Track if we're currently connecting nodes
@@ -1335,7 +1335,7 @@ export default function PatchPage() {
       </ReactFlow>
       
       {selectedNode && (
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-white border-l shadow-lg">
+        <div className="absolute top-0 right-0 w-1/3 h-full border-l shadow-lg" style={{ backgroundColor: panelBgColor }}>
           <div className="py-2 px-4 border-b flex justify-between items-start">
             <div>
               <h3 className="text-lg font-semibold truncate max-w-full" title={selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
