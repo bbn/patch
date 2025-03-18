@@ -161,6 +161,17 @@ export default function PatchPage() {
   const [selectedGear, setSelectedGear] = useState<Gear | null>(null);
   const [unsubscribeGear, setUnsubscribeGear] = useState<(() => void) | null>(null);
   
+  // Generate a random pale but saturated background color for the panel
+  const [panelBgColor] = useState(() => {
+    // Generate a random hue (0-360)
+    const hue = Math.floor(Math.random() * 360);
+    // High saturation (70-90%)
+    const saturation = Math.floor(70 + Math.random() * 20);
+    // High lightness for paleness (85-95%)
+    const lightness = Math.floor(85 + Math.random() * 10);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  });
+  
   // Track if we're currently connecting nodes
   const [isConnecting, setIsConnecting] = useState(false);
   
@@ -1280,7 +1291,7 @@ export default function PatchPage() {
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{ type: 'default' }}
       >
-        <Panel position="top-left" className="bg-white p-2 rounded shadow-md m-2">
+        <Panel position="top-left" className="p-2 rounded shadow-md m-2" style={{ backgroundColor: panelBgColor }}>
           <div className="flex items-center">
             <div>
               <h1 
