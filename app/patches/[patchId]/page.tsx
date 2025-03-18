@@ -1367,6 +1367,8 @@ export default function PatchPage() {
   useEffect(() => {
     console.log(`Current patch state: ${nodes.length} nodes and ${edges.length} edges`);
   }, [nodes.length, edges.length]);
+  
+  // We'll use ReactFlow's built-in fitView property instead of a custom implementation
 
   return (
     <div className="h-screen w-full">
@@ -1393,7 +1395,12 @@ export default function PatchPage() {
             setReactFlowInstance(instance as any);
           }}
           nodesDraggable={true}
-          fitView={false}
+          fitView={true} // Auto-fit view when nodes are loaded
+          fitViewOptions={{ 
+            padding: 0.2,
+            includeHiddenNodes: false,
+            duration: 800 // Smooth animation
+          }}
           defaultViewport={{ x: 0, y: 0, zoom: 1 }}
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: 'default' }}
@@ -1433,6 +1440,38 @@ export default function PatchPage() {
               )}
             </div>
           </div>
+        </Panel>
+        
+        {/* Custom fit view button */}
+        <Panel position="top-right" className="p-2 m-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="bg-white hover:bg-gray-100 text-gray-700"
+            onClick={() => {
+              if (reactFlowInstance && nodes.length > 0) {
+                reactFlowInstance.fitView({ 
+                  padding: 0.2, 
+                  includeHiddenNodes: false,
+                  duration: 800 // Smooth animation
+                });
+              }
+            }}
+            title="Fit view to show all nodes"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="h-4 w-4"
+            >
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </Button>
         </Panel>
         
         <Controls />
