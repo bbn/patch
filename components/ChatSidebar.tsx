@@ -157,9 +157,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <div className="flex-grow overflow-y-auto p-3">
             {messages.map((m) => (
               <div key={m.id} className="mb-3 text-left">
-                <div className="text-xs font-semibold mb-0.5">
-                  {m.role === "user" ? "You" : "Assistant"}:
-                </div>
                 <div
                   className={`text-xs ${m.role === "user" ? "text-blue-700" : "text-gray-800"}`}
                 >
@@ -169,9 +166,6 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             ))}
             {isLoading && (
               <div className="mb-3 text-left">
-                <div className="text-xs font-semibold mb-0.5">
-                  Assistant:
-                </div>
                 <div className="text-xs text-gray-800">
                   Thinking...
                 </div>
@@ -179,13 +173,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             )}
             {error && (
               <div className="mb-3 text-left">
-                <div className="text-xs font-semibold text-red-600 mb-0.5">
-                  Error:
-                </div>
                 <div className="text-xs text-red-600">
-                  {typeof error === 'string' ? error : 
-                   error?.message ? error.message : 
-                   'Failed to get response'}
+                  Error: {typeof error === 'string' ? error : 
+                         error?.message ? error.message : 
+                         'Failed to get response'}
                 </div>
               </div>
             )}
