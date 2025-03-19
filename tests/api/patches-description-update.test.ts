@@ -37,17 +37,7 @@ describe('Patch Description in API Responses', () => {
     // Save original fetch
     originalFetch = global.fetch;
     
-    // Mock fetch to handle LLM API calls
-    global.fetch = jest.fn().mockImplementation(async () => {
-      return {
-        ok: true,
-        headers: {
-          get: () => 'application/json',
-        },
-        json: async () => ({ content: 'A test patch that connects data processing gears' }),
-        text: async () => 'A test patch that connects data processing gears',
-      } as unknown as Response;
-    })
+    // Use global mock fetch from jest.setup.ts
   });
   
   afterAll(() => {
@@ -165,17 +155,7 @@ describe('Patch Description in API Responses', () => {
     // Get the initial description
     const initialDescription = testPatch.description;
     
-    // Mock a different description for the regeneration
-    global.fetch = jest.fn().mockImplementation(async () => {
-      return {
-        ok: true,
-        headers: {
-          get: () => 'application/json',
-        },
-        json: async () => ({ content: 'Updated description after regeneration' }),
-        text: async () => 'Updated description after regeneration',
-      } as unknown as Response;
-    })
+    // Use global mock fetch from jest.setup.ts
     
     // Trigger manual regeneration
     const regenerateRequest = new NextRequest('http://localhost:3000/api/patches?regenerate_all_descriptions=true');

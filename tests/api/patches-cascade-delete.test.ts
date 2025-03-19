@@ -1,11 +1,16 @@
 import { describe, it, expect, afterEach } from '@jest/globals';
 import { Patch } from '@/lib/models/patch';
 import { Gear } from '@/lib/models/gear';
-// Mock the kv module instead of importing it
-const getFromKV = jest.fn().mockImplementation((key) => {
-  // Mock the data for test-patch-cascade
-  if (key === 'patch:test-patch-cascade') {
-    return {
+
+// Import the actual KV module since it now has proper exports
+import { getFromKV, deleteFromKV, saveToKV, listKeysFromKV } from '@/lib/kv';
+
+// Mock the actual module functions
+jest.mock('@/lib/kv', () => ({
+  getFromKV: jest.fn().mockImplementation((key) => {
+    // Mock the data for test-patch-cascade
+    if (key === 'patch:test-patch-cascade') {
+      return {
       id: 'test-patch-cascade',
       name: 'Test Patch for Cascade Delete',
       description: 'A test patch with gears that should be deleted when the patch is deleted',
@@ -54,8 +59,11 @@ const getFromKV = jest.fn().mockImplementation((key) => {
     };
   }
   return null;
-});
-const deleteFromKV = jest.fn().mockResolvedValue(true);
+  }),
+  deleteFromKV: jest.fn().mockResolvedValue(true),
+  saveToKV: jest.fn().mockResolvedValue(true),
+  listKeysFromKV: jest.fn().mockResolvedValue([])
+}));
 
 // Mock the Gear and Patch modules
 jest.mock('@/lib/models/gear', () => {

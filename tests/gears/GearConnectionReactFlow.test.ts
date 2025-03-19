@@ -107,8 +107,8 @@ describe('Gear Connection in ReactFlow', () => {
     // The method is called with (url, skipSave) where skipSave is optional
     const expectedUrl = '/api/gears/test-gear-b';
     expect(gearA.addOutputUrl).toHaveBeenCalled();
-    // Pass the expected URL directly
-    expect(gearA.addOutputUrl).toHaveBeenCalledWith(expectedUrl);
+    // Pass the expected URL directly, and match the first argument only
+    expect(gearA.addOutputUrl).toHaveBeenCalledWith(expectedUrl, expect.anything());
     
     // Verify the outputUrls array contains the expected URL
     expect(gearA.outputUrls).toContain(expectedUrl);

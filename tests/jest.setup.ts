@@ -165,3 +165,31 @@ jest.mock('@/lib/firebase', () => {
     __esModule: true,
   };
 });
+
+// Add global test mocking for fetch
+// Use proper Response constructor to ensure TypeScript compatibility
+const mockResponseText = 'Test response';
+global.fetch = jest.fn().mockImplementation(() => {
+  return Promise.resolve(
+    new Response(
+      JSON.stringify({ content: mockResponseText }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
+  );
+});
+
+// Set a global flag for LLM mocking based on jest command line
+// This allows tests to check if they should use real or mock LLMs
+declare global {
+  namespace NodeJS {
+    interface Global {
+      MOCK_LLMS: boolean;
+      fetch: Function;
+    }
+  }
+}
+
+(global as any).MOCK_LLMS = true;

@@ -18,17 +18,7 @@ describe('Patch Description Generation', () => {
   beforeAll(() => {
     // Save original fetch
     originalFetch = global.fetch;
-    // Mock fetch for label endpoint
-    global.fetch = jest.fn().mockImplementation(async () => {
-      return {
-        ok: true,
-        headers: {
-          get: () => 'application/json'
-        },
-        json: async () => ({ content: 'Generated description for test patch' }),
-        text: async () => 'Generated description for test patch',
-      } as unknown as Response;
-    });
+    // Use the global mock fetch from jest.setup.ts
   });
   
   afterAll(() => {

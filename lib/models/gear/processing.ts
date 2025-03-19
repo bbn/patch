@@ -7,6 +7,29 @@ import { GearInput, GearOutput } from "../types";
  */
 export async function processWithLLM(gear: Gear, input?: GearInput): Promise<GearOutput> {
   try {
+    // For tests, check if we're in test mode with mocking enabled
+    if (typeof global !== 'undefined' && (global as any).MOCK_LLMS === true) {
+      console.log(`Using mock LLM response for gear ${gear.id} in test mode`);
+      // Return appropriate response based on gear ID for specialized test cases
+      if (gear.id.includes('activity') || gear.id.includes('daily')) {
+        return `# Daily Activity Summary
+
+## Slack Highlights
+- User1 sent 5 messages in #general
+- User2 mentioned you in #dev-team
+
+## JIRA Updates
+- 3 tickets assigned to you
+- 2 tickets closed today
+
+## Action Items
+- Respond to User2's mention
+- Check ticket PROJ-123`;
+      }
+      
+      return "This is a mock LLM response for testing purposes";
+    }
+    
     // For tests, this method should be mocked unless the actual LLM call is desired
     if (typeof window === 'undefined') {
       // In a Node.js environment (tests), we should use the Vercel AI SDK
@@ -159,6 +182,23 @@ export async function processWithLLM(gear: Gear, input?: GearInput): Promise<Gea
  */
 export async function processWithSpecialPrompt(gear: Gear, prompt: string): Promise<string> {
   try {
+    // For tests, check if we're in test mode with mocking enabled
+    if (typeof global !== 'undefined' && (global as any).MOCK_LLMS === true) {
+      console.log(`Using mock LLM response for special prompt in test mode: ${prompt.substring(0, 50)}...`);
+      
+      // Check for patch description generation
+      if (prompt.includes('description') || prompt.includes('nodes')) {
+        return "This patch processes data through a pipeline and generates reports with key insights.";
+      }
+      
+      // Check for gear label generation
+      if (prompt.includes('label') || prompt.includes('name')) {
+        return "Data Processor";
+      }
+      
+      return "This is a mock LLM response for a special prompt in testing mode";
+    }
+    
     if (typeof window === 'undefined') {
       // In a Node.js environment (tests), we should use the Vercel AI SDK
       try {

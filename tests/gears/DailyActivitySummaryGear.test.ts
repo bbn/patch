@@ -171,7 +171,7 @@ describe('DailyActivitySummaryGear', () => {
           console.error('Error processing with LLM:', error);
           throw error;
         }
-      };
+      });
     }
   });
 

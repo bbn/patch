@@ -1,5 +1,5 @@
 // Use relative path instead of alias for direct TypeScript compilation
-import { Gear } from '../../lib/models/Gear';
+import { Gear } from '../../lib/models/gear';
 import { GearInput } from '../../lib/models/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -102,7 +102,7 @@ describe('GearChaining', () => {
     
     // Only mock the LLM processing if --mock-llms flag is present
     if (mockLlm) {
-      firstGear['processWithLLM'] = jest.fn().mockImplementation(async (input?: GearInput) => {
+      jest.spyOn(firstGear, 'process').mockImplementation(async (input?: GearInput) => {
         const inputText = typeof input === 'string' 
           ? input 
           : JSON.stringify(input || firstGear.inputs);
@@ -130,7 +130,7 @@ describe('GearChaining', () => {
     
     // Only mock the LLM processing if --mock-llms flag is present
     if (mockLlm) {
-      secondGear['processWithLLM'] = jest.fn().mockImplementation(async (input?: GearInput) => {
+      jest.spyOn(secondGear, 'process').mockImplementation(async (input?: GearInput) => {
         // Process the input data
         const inputData = typeof input === 'string' 
           ? input 
@@ -220,7 +220,7 @@ describe('GearChaining', () => {
     
     // Only mock the LLM processing if --mock-llms flag is present
     if (mockLlm) {
-      senderGear['processWithLLM'] = jest.fn().mockImplementation(async () => {
+      jest.spyOn(senderGear, 'process').mockImplementation(async () => {
         return JSON.stringify({
           wordCount: 157,
           sentimentScore: 0.8,
@@ -228,7 +228,7 @@ describe('GearChaining', () => {
         });
       });
       
-      receiverGear['processWithLLM'] = jest.fn().mockImplementation(async (input?: GearInput) => {
+      jest.spyOn(receiverGear, 'process').mockImplementation(async (input?: GearInput) => {
         // Extract data from input to verify it's the sender's output
         const inputData = typeof input === 'string'
           ? input
