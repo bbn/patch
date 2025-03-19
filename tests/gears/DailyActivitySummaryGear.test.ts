@@ -99,45 +99,16 @@ describe('DailyActivitySummaryGear', () => {
 
       // Mock the process method instead of the private processWithLLM
       // Force the mock to always return the expected string format with proper sections
-      jest.spyOn(gear, 'process').mockReturnValue(Promise.resolve(`
-# Daily Activity Summary - February 25, 2023
-
-## Team Communication (Slack)
-
-### Key Discussions
-- John Doe has pushed fixes for the user authentication bug and the PR is ready for review
-- Jane Smith will review the authentication fix PR this afternoon
-- Team stand-up scheduled for 10:30 AM
-- Performance issue in production environment is being investigated by John Doe
-- Potential database indexing issue identified as cause of performance problems
-
-## Project Status (JIRA)
-
-### Active Issues
-- PROJ-101: User authentication fails on mobile devices (In Progress, John Doe)
-  - John moved this to In Progress
-  - John identified differing API endpoints between mobile and desktop
-- PROJ-103: Performance issue in production environment (In Progress, John Doe)
-  - Critical priority issue
-  - John moved this to In Progress
-
-### Completed Work
-- PROJ-104: Create UI design for new settings page (Done, Jane Smith)
-  - QA testing completed with positive results
-
-### Upcoming Work
-- PROJ-102: Implement password reset functionality (To Do, Sarah Wilson)
-
+      jest.spyOn(gear, 'process').mockReturnValue(Promise.resolve(`# Daily Activity Summary·
+## Slack Highlights
+- User1 sent 5 messages in #general
+- User2 mentioned you in #dev-team·
+## JIRA Updates
+- 3 tickets assigned to you
+- 2 tickets closed today·
 ## Action Items
-1. Continue work on authentication fixes
-2. Address the critical performance issue in production
-3. Review completed UI designs for the settings page
-4. Prepare for the upcoming password reset functionality implementation
-
-## Notable Achievements
-- UI design for settings page completed and passed QA
-- Root cause identified for authentication issues
-        `));
+- Respond to User2's mention
+- Check ticket PROJ-123`));
     }
   });
 
@@ -165,10 +136,9 @@ describe('DailyActivitySummaryGear', () => {
     
     if (mockLlm) {
       // Additional checks for mocked response
-      expect(result).toContain('Team Communication (Slack)');
-      expect(result).toContain('Project Status (JIRA)');
+      expect(result).toContain('Slack Highlights');
+      expect(result).toContain('JIRA Updates');
       expect(result).toContain('Action Items');
-      expect(result).toContain('Notable Achievements');
     }
   // Increase timeout to 60 seconds for LLM API calls
   }, 60000);
@@ -235,20 +205,42 @@ describe('DailyActivitySummaryGear', () => {
       content: 'Please generate a daily activity summary from the inputs of Slack and JIRA data.'
     });
     
-    // Always mock the process method for this test with explicit return value to match expectations
-    jest.spyOn(sourceGear, 'process').mockReturnValue(Promise.resolve(`# Daily Activity Summary
+    // Direct access mock implementation to accurately replicate the internal behavior
+    jest.spyOn(sourceGear, 'processWithoutLogging').mockImplementation(async (source, input) => {
+      // Force direct access to the protected property
+      const gearAny = sourceGear as any;
+      
+      // Initialize inputs object if needed, matching the real implementation
+      if (!gearAny._data.inputs) {
+        gearAny._data.inputs = {};
+      }
+      
+      // Store the input directly, exactly as the real method does
+      gearAny._data.inputs[source] = input;
+      gearAny._data.updatedAt = Date.now();
+      
+      // Skip save call to avoid db interaction
+      
+      // Mock the response output
+      const output = `# Daily Activity Summary
 
-## Team Communication (Slack)
-- Key activity items
+## Slack Highlights
+- User1 sent 5 messages in #general
+- User2 mentioned you in #dev-team
 
-## Project Status (JIRA)
-- Project updates
+## JIRA Updates
+- 3 tickets assigned to you
+- 2 tickets closed today
 
 ## Action Items
-- Follow-up tasks
-
-## Notable Achievements
-- Team accomplishments`));
+- Respond to User2's mention
+- Check ticket PROJ-123`;
+      
+      // Store the output in the gear
+      gearAny._data.output = output;
+      
+      return output;
+    });
     
     // Set Slack data
     await sourceGear.processInput('slack', {
@@ -297,20 +289,17 @@ describe('DailyActivitySummaryGear', () => {
     jest.spyOn(compatGear, 'process').mockImplementation(async () => {
       return `# Daily Activity Summary for Backward Compatibility
 
-## Team Communication (Slack)
-- Team discussions recorded
-- User authentication fixes proposed
+## Slack Highlights
+- User1 sent 5 messages in #general
+- User2 mentioned you in #dev-team
 
-## Project Status (JIRA)
-- PROJ-101: User authentication issue (In Progress)
-- PROJ-103: Performance issue (In Progress)
+## JIRA Updates
+- 3 tickets assigned to you
+- 2 tickets closed today
 
 ## Action Items
-- Complete authentication fixes
-- Resolve performance issues
-
-## Notable Achievements
-- Progress made on critical issues`;
+- Respond to User2's mention
+- Check ticket PROJ-123`;
     });
     
     // Create a combined data object

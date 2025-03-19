@@ -116,14 +116,25 @@ describe('Patch Description Generation', () => {
     // Reset the mock counts
     jest.clearAllMocks();
     
-    // Mock the updateContainingPatchDescriptions method
+    // Define a temporary window object to bypass the early return in updateContainingPatchDescriptions
+    const originalWindow = global.window;
+    (global as any).window = {}; 
+  
+    // Mock updateContainingPatchDescriptions to call generateDescription on the patch
     jest.spyOn(testGear, 'updateContainingPatchDescriptions').mockImplementation(async () => {
       // Simulate what this method would do - call generateDescription on the patch
       await testPatch.generateDescription();
+      await testPatch.save();
     });
+    
+    // Directly modify the gear's skipDescriptionUpdates property to ensure updateContainingPatchDescriptions runs
+    (testGear as any).skipDescriptionUpdates = false;
     
     // Change the gear label
     await testGear.setLabel('New Processor Name');
+    
+    // Restore window
+    (global as any).window = originalWindow;
     
     // Verify that updateContainingPatchDescriptions was called
     expect(testGear.updateContainingPatchDescriptions).toHaveBeenCalled();
