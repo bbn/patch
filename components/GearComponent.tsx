@@ -32,9 +32,11 @@ const GearNode: React.FC<GearNodeProps> = ({ id, data, isConnectable }) => {
   // Use inline style for dynamic width
   const widthStyle = { width: `${nodeWidth}px` };
   
-  // Add debug logging for animation state
+  // Only log processing state changes in development
   React.useEffect(() => {
-    console.log(`GearComponent: Rendering node ${id} with isProcessing=${Boolean(data.isProcessing)}, applying ${data.isProcessing ? 'animation' : 'normal'} classes`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`GearComponent: Rendering node ${id} with isProcessing=${Boolean(data.isProcessing)}`);
+    }
   }, [id, data.isProcessing]);
     
   return (
