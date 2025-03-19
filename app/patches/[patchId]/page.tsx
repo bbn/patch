@@ -63,9 +63,9 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
           
           // Update processing state from Firebase
           const newProcessingState = Boolean(gearData.isProcessing);
-          console.log(`GearNode: Processing state check for ${data.gearId} - isProcessing in Firebase: ${newProcessingState}, current state: ${isProcessing}, raw value: ${gearData.isProcessing}`);
+          // Only log state changes, not every check
           if (newProcessingState !== isProcessing) {
-            console.log(`GearNode: Updated processing state for ${data.gearId} to ${newProcessingState}`);
+            console.log(`GearNode: Processing state changed for ${data.gearId} to ${newProcessingState}`);
             setIsProcessing(newProcessingState);
           }
         }
@@ -174,16 +174,21 @@ export default function PatchPage() {
   const [unsubscribeGear, setUnsubscribeGear] = useState<(() => void) | null>(null);
   const [commandKeyPressed, setCommandKeyPressed] = useState<boolean>(false);
   
-  // Set up event listeners for Command key detection
+  // Set up event listeners for Command/Ctrl key detection
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Meta' || event.key === 'Command') {
+      // Handle both Command key (macOS) and Ctrl key (Windows/Linux)
+      // event.metaKey would be true for Command key on macOS
+      // event.ctrlKey would be true for Ctrl key on Windows/Linux
+      if (event.key === 'Meta' || event.key === 'Command' || 
+          (event.key === 'Control' && !navigator.userAgent.includes('Mac'))) {
         setCommandKeyPressed(true);
       }
     };
     
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Meta' || event.key === 'Command') {
+      if (event.key === 'Meta' || event.key === 'Command' || 
+          (event.key === 'Control' && !navigator.userAgent.includes('Mac'))) {
         setCommandKeyPressed(false);
       }
     };
@@ -993,37 +998,18 @@ export default function PatchPage() {
       // Use the selected gear or find it
       const gear = selectedGear || await Gear.findById(gearId);
       if (gear) {
-        console.log(`Processing example ${id} for gear ${gearId}`);
+        // Only log detailed processing info in development
+        const isDev = process.env.NODE_ENV === 'development';
         
-        // Get the example before processing
-        const exampleBefore = gear.exampleInputs.find(e => e.id === id);
-        console.log(`Example before processing:`, exampleBefore ? {
-          id: exampleBefore.id,
-          name: exampleBefore.name,
-          hasOutput: !!exampleBefore.output,
-          outputType: exampleBefore.output ? typeof exampleBefore.output : 'undefined',
-        } : 'not found');
+        if (isDev) {
+          console.log(`Processing example ${id} for gear ${gearId}`);
+        }
         
         // Process the example
         const processedExample = await gear.processExampleInput(id);
         
-        console.log(`Example processing result:`, processedExample ? {
-          id: processedExample.id,
-          name: processedExample.name, 
-          hasOutput: !!processedExample.output,
-          outputType: processedExample.output ? typeof processedExample.output : 'undefined',
-        } : 'failed');
-        
-        // Verify the example was updated - fetch the gear again to check
-        const updatedGear = await Gear.findById(gearId);
-        if (updatedGear) {
-          const exampleAfter = updatedGear.exampleInputs.find(e => e.id === id);
-          console.log(`Example after processing:`, exampleAfter ? {
-            id: exampleAfter.id,
-            name: exampleAfter.name,
-            hasOutput: !!exampleAfter.output,
-            outputType: exampleAfter.output ? typeof exampleAfter.output : 'undefined',
-          } : 'not found');
+        if (isDev && processedExample) {
+          console.log(`Example processed successfully: ${processedExample.name}`);
         }
       }
     } catch (error) {
@@ -1066,9 +1052,9 @@ export default function PatchPage() {
       // Get the gear to access its outputUrls
       const gear = selectedGear || await Gear.findById(gearId);
       if (gear) {
-        // Call the API directly without the no_forward parameter
-        // This allows forwarding to connected gears
-        console.log(`Forwarding example output from ${gear.label} (${gear.id})`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Forwarding example output from ${gear.label} (${gear.id})`);
+        }
         
         // For the "Send Output" button case:
         // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
@@ -1082,9 +1068,10 @@ export default function PatchPage() {
           })
         });
         
-        console.log(`DEBUG - Send Output: Called API on server for gear ${gear.id} with example output`);
-        
-        console.log(`Sent output from example ${exampleId} to ${gear.outputUrls.length} connected gears`);
+        // Only log in development or provide minimal logging in production
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Sent output from example ${exampleId} to ${gear.outputUrls.length} connected gears`);
+        }
       } else {
         console.error(`Could not find gear ${gearId}`);
       }
@@ -1128,7 +1115,10 @@ export default function PatchPage() {
     }
   }, [reactFlowInstance, nodes.length]);
   
-  // Custom wheel event handler for Figma-like behavior
+  // Custom wheel event handler for Figma-like behavior with throttling
+  const lastWheelEventTime = useRef<number>(0);
+  const THROTTLE_INTERVAL = 16; // ~60fps (1000ms / 60)
+  
   const handleWheel = useCallback((event: WheelEvent) => {
     // Early return if reactFlowInstance is not available
     if (!reactFlowInstance) return;
@@ -1136,15 +1126,22 @@ export default function PatchPage() {
     // Prevent default scrolling behavior
     event.preventDefault();
     
+    // Simple throttling to improve performance
+    const now = Date.now();
+    if (now - lastWheelEventTime.current < THROTTLE_INTERVAL) {
+      return;
+    }
+    lastWheelEventTime.current = now;
+    
     // Use requestAnimationFrame to avoid React rendering conflicts
     requestAnimationFrame(() => {
       try {
-        // If Command/Meta key is pressed, handle zooming ONLY with vertical scroll
+        // If Command/Meta key (macOS) or Ctrl key (Windows/Linux) is pressed, handle zooming ONLY with vertical scroll
         if (commandKeyPressed) {
-          // Only handle vertical scroll for zooming when Command key is pressed
-          // Ignore horizontal scroll with Command key
+          // Only handle vertical scroll for zooming when modifier key is pressed
+          // Ignore horizontal scroll with modifier key (Command on macOS, Ctrl on Windows/Linux)
           if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-            // This is primarily a horizontal scroll event with command key, so do nothing
+            // This is primarily a horizontal scroll event with modifier key, so do nothing
             return;
           }
           
@@ -1362,9 +1359,9 @@ export default function PatchPage() {
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
           onInit={(instance) => {
-            console.log("ReactFlow initialized");
-            console.log("Initial nodes:", nodes);
-            console.log("Initial edges:", edges);
+            if (process.env.NODE_ENV === 'development') {
+              console.log("ReactFlow initialized");
+            }
             setReactFlowInstance(instance as any);
           }}
           nodesDraggable={true}
