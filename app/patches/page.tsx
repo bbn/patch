@@ -33,6 +33,23 @@ export default function PatchesPage() {
   const [patches, setPatches] = useState<PatchSummary[]>([]);
   const [newPatchName, setNewPatchName] = useState("");
   const [loading, setLoading] = useState(true);
+  
+  // Generate a deterministic color based on patchId - same algorithm as in [patchId]/page.tsx
+  const getPatchCardColor = (patchId: string) => {
+    // Create a deterministic color based on the patchId
+    let hash = 0;
+    for (let i = 0; i < patchId.length; i++) {
+      hash = patchId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert hash to a hue (0-360)
+    const hue = Math.abs(hash % 360);
+    // Keep high saturation but increase lightness for a very pale appearance
+    const saturation = 95;
+    const lightness = 98;
+    
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.85)`;
+  };
 
   useEffect(() => {
     // Load patches directly from Firestore client-side
@@ -209,6 +226,7 @@ export default function PatchesPage() {
               key={patch.id} 
               className={`hover:shadow-md transition-shadow ${patch.isDeleting ? 'opacity-50' : ''}`}
               onClick={() => !patch.isDeleting && handlePatchClick(patch.id)}
+              style={{ backgroundColor: getPatchCardColor(patch.id) }}
             >
               <CardHeader className="pb-2 flex flex-row justify-between items-start">
                 <div className="flex-1">

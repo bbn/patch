@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useState, useCallback, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
           
           // Update processing state from Firebase
           const newProcessingState = Boolean(gearData.isProcessing);
+          console.log(`GearNode: Processing state check for ${data.gearId} - isProcessing in Firebase: ${newProcessingState}, current state: ${isProcessing}, raw value: ${gearData.isProcessing}`);
           if (newProcessingState !== isProcessing) {
             console.log(`GearNode: Updated processing state for ${data.gearId} to ${newProcessingState}`);
             setIsProcessing(newProcessingState);
@@ -97,14 +99,23 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
     );
   }
   
-  // Truncate label if it's too long to fit in the node
-  const displayLabel = gearLabel.length > 25 
-    ? gearLabel.substring(0, 22) + '...' 
-    : gearLabel;
+  // Auto-adjust node size based on label length
+  // Assuming average character width of 8px in the current font
+  const charWidth = 8;
+  const basePadding = 32; // 16px padding on each side 
+  const minWidth = 160; // Minimum width in px
+  
+  // Calculate width needed for the text (with some minimal padding)
+  const textWidth = gearLabel.length * charWidth + basePadding;
+  // Use the larger of the minimum width or the calculated width
+  const nodeWidth = Math.max(minWidth, textWidth);
+  // Convert to tailwind-style width class or use inline style
+  const widthStyle = { width: `${nodeWidth}px` };
   
   return (
     <div 
-      className={`rounded-lg bg-white border-2 p-4 w-40 h-20 flex items-center justify-center transition-all duration-300 ${
+      style={widthStyle}
+      className={`rounded-lg bg-white border-2 p-4 h-20 flex items-center justify-center transition-all duration-300 ${
         isProcessing 
           ? "border-blue-500 shadow-md shadow-blue-200 animate-pulse" 
           : "border-gray-200"
@@ -115,8 +126,10 @@ const GearNode = ({ id, data, isConnectable }: { id: string; data: any; isConnec
         position={Position.Top}
         isConnectable={isConnectable}
       />
-      <div className="text-center text-sm truncate max-w-[140px]" title={gearLabel}>
-        {displayLabel}
+      <div className="text-center text-sm" 
+           style={{ maxWidth: `${nodeWidth - basePadding}px` }}
+           title={gearLabel}>
+        {gearLabel}
       </div>
       <Handle
         type="source"
@@ -135,6 +148,7 @@ export default function PatchPage() {
   const [patchDescription, setPatchDescription] = useState<string>("");
   const [isEditingName, setIsEditingName] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const flowContainerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [gearMessages, setGearMessages] = useState<{ id?: string; role: string; content: string }[]>([]);
   const [logEntries, setLogEntries] = useState<GearLogEntry[]>([]);
@@ -158,6 +172,48 @@ export default function PatchPage() {
   const [unsubscribePatch, setUnsubscribePatch] = useState<(() => void) | null>(null);
   const [selectedGear, setSelectedGear] = useState<Gear | null>(null);
   const [unsubscribeGear, setUnsubscribeGear] = useState<(() => void) | null>(null);
+  const [commandKeyPressed, setCommandKeyPressed] = useState<boolean>(false);
+  
+  // Set up event listeners for Command key detection
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Meta' || event.key === 'Command') {
+        setCommandKeyPressed(true);
+      }
+    };
+    
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Meta' || event.key === 'Command') {
+        setCommandKeyPressed(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+  
+  // Deterministic color based on patchId to avoid hydration mismatch
+  const [panelBgColor] = useState(() => {
+    // We need to create a deterministic color based on the patchId to avoid hydration errors
+    // Use a simple hash of the patchId to derive a color
+    let hash = 0;
+    for (let i = 0; i < patchId.length; i++) {
+      hash = patchId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Convert hash to a hue (0-360)
+    const hue = Math.abs(hash % 360);
+    // Keep high saturation but increase lightness even more for an extremely pale appearance
+    const saturation = 95;
+    const lightness = 98;
+    
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.85)`;
+  });
   
   // Track if we're currently connecting nodes
   const [isConnecting, setIsConnecting] = useState(false);
@@ -776,13 +832,14 @@ export default function PatchPage() {
       y: event.clientY
     } as any);
     
-    // Node dimensions (must match the GearNode component dimensions)
-    const nodeWidth = 160;
+    // Node dimensions - only height is fixed, width is now dynamic
+    // Use minimum width for initial placement
+    const minNodeWidth = 160;
     const nodeHeight = 80;
     
     // Add gear at the exact position, centered on cursor
     addGearNode({
-      x: position.x - (nodeWidth / 2),
+      x: position.x - (minNodeWidth / 2),
       y: position.y - (nodeHeight / 2)
     });
     
@@ -1006,35 +1063,12 @@ export default function PatchPage() {
     const gearId = node.data.gearId;
     
     try {
-      // Set processing state for this gear
-      setProcessingGears(prev => {
-        const newSet = new Set(prev);
-        newSet.add(gearId);
-        return newSet;
-      });
-      
-      // Update the node to show processing animation
-      setNodes(nodes => 
-        nodes.map(n => {
-          if (n.data.gearId === gearId) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                isProcessing: true
-              }
-            };
-          }
-          return n;
-        })
-      );
-      
       // Get the gear to access its outputUrls
       const gear = selectedGear || await Gear.findById(gearId);
       if (gear) {
         // Call the API directly without the no_forward parameter
         // This allows forwarding to connected gears
-        console.log(`Processing and forwarding example output from ${gear.label} (${gear.id})`);
+        console.log(`Forwarding example output from ${gear.label} (${gear.id})`);
         
         // For the "Send Output" button case:
         // We DON'T want to create a log in gear A (the sender) but DO want logs in the receiving gears
@@ -1056,29 +1090,6 @@ export default function PatchPage() {
       }
     } catch (error) {
       console.error("Error sending example output:", error);
-    } finally {
-      // Clear processing state
-      setProcessingGears(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(gearId);
-        return newSet;
-      });
-      
-      // Update the node to remove processing animation
-      setNodes(nodes => 
-        nodes.map(n => {
-          if (n.data.gearId === gearId) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                isProcessing: false
-              }
-            };
-          }
-          return n;
-        })
-      );
     }
   };
 
@@ -1116,6 +1127,84 @@ export default function PatchPage() {
       reactFlowInstance.setViewport({ x: 0, y: 0, zoom: 1 });
     }
   }, [reactFlowInstance, nodes.length]);
+  
+  // Custom wheel event handler for Figma-like behavior
+  const handleWheel = useCallback((event: WheelEvent) => {
+    // Early return if reactFlowInstance is not available
+    if (!reactFlowInstance) return;
+    
+    // Prevent default scrolling behavior
+    event.preventDefault();
+    
+    // Use requestAnimationFrame to avoid React rendering conflicts
+    requestAnimationFrame(() => {
+      try {
+        // If Command/Meta key is pressed, handle zooming ONLY with vertical scroll
+        if (commandKeyPressed) {
+          // Only handle vertical scroll for zooming when Command key is pressed
+          // Ignore horizontal scroll with Command key
+          if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+            // This is primarily a horizontal scroll event with command key, so do nothing
+            return;
+          }
+          
+          const delta = event.deltaY < 0 ? 1.1 : 0.9;
+          
+          // Get the current viewport
+          const { x, y, zoom } = reactFlowInstance.getViewport();
+          
+          // Calculate new zoom level with bounds check
+          const newZoom = Math.max(0.1, Math.min(zoom * delta, 10));
+          
+          // Get the cursor position in the viewport
+          const container = flowContainerRef.current;
+          if (!container) return;
+          
+          const rect = container.getBoundingClientRect();
+          const clientX = event.clientX - rect.left;
+          const clientY = event.clientY - rect.top;
+          
+          // Convert client coordinates to flow coordinates
+          const flowPos = reactFlowInstance.screenToFlowPosition({
+            x: clientX,
+            y: clientY,
+          });
+          
+          // Calculate new position to zoom towards cursor
+          const newX = flowPos.x - (flowPos.x - x / zoom) * newZoom;
+          const newY = flowPos.y - (flowPos.y - y / zoom) * newZoom;
+          
+          // Set the new viewport
+          reactFlowInstance.setViewport({ x: newX, y: newY, zoom: newZoom });
+        } else {
+          // No command key, handle normal panning
+          const { x, y, zoom } = reactFlowInstance.getViewport();
+          reactFlowInstance.setViewport({
+            x: x - event.deltaX,
+            y: y - event.deltaY,
+            zoom,
+          });
+        }
+      } catch (error) {
+        console.error("Error during wheel interaction:", error);
+      }
+    });
+  }, [reactFlowInstance, commandKeyPressed, flowContainerRef]);
+  
+  // Setup non-passive wheel event listener
+  useEffect(() => {
+    const container = flowContainerRef.current;
+    
+    if (container && reactFlowInstance) {
+      // Add non-passive wheel event listener
+      container.addEventListener('wheel', handleWheel, { passive: false });
+      
+      // Cleanup function
+      return () => {
+        container.removeEventListener('wheel', handleWheel);
+      };
+    }
+  }, [handleWheel, reactFlowInstance]);
   
   // We no longer need to listen for gear label changes
   // Each GearNode component gets its label directly from Firestore
@@ -1251,76 +1340,121 @@ export default function PatchPage() {
   useEffect(() => {
     console.log(`Current patch state: ${nodes.length} nodes and ${edges.length} edges`);
   }, [nodes.length, edges.length]);
+  
+  // We'll use ReactFlow's built-in fitView property instead of a custom implementation
 
   return (
-    <div className="container mx-auto p-4 flex h-[calc(100vh-3.5rem)]">
-      <div className="flex-1 pr-4">
-        <Card className="h-full">
-          <CardHeader className="flex flex-row items-center justify-between">
+    <div className="h-screen w-full">
+      <div 
+        className="h-full w-full" 
+        ref={flowContainerRef}
+      >
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
+          onInit={(instance) => {
+            console.log("ReactFlow initialized");
+            console.log("Initial nodes:", nodes);
+            console.log("Initial edges:", edges);
+            setReactFlowInstance(instance as any);
+          }}
+          nodesDraggable={true}
+          fitView={true} // Auto-fit view when nodes are loaded
+          fitViewOptions={{ 
+            padding: 0.2,
+            includeHiddenNodes: false,
+            duration: 800 // Smooth animation
+          }}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          proOptions={{ hideAttribution: true }}
+          defaultEdgeOptions={{ type: 'default' }}
+          panOnScroll={false}
+          zoomOnScroll={false}
+          zoomOnPinch={true}
+          selectionKeyCode="Shift"
+          multiSelectionKeyCode="Control"
+      >
+        <Panel position="top-left" className="p-2 rounded shadow-md m-2" style={{ backgroundColor: panelBgColor }}>
+          <div className="flex items-center">
             <div>
-              {isEditingName ? (
-                <div className="w-full max-w-xs">
+              <h1 
+                className="text-xl font-bold cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
+              >
+                <Link href="/" className="text-gray-500 hover:text-gray-700">patch.land</Link>
+                <span className="text-gray-500 mx-2">›</span>
+                {isEditingName ? (
                   <Input
                     ref={nameInputRef}
                     value={patchName}
                     onChange={(e) => setPatchName(e.target.value)}
                     onBlur={savePatchName}
                     onKeyDown={(e) => e.key === 'Enter' && savePatchName()}
-                    className="font-semibold text-xl"
+                    className="font-semibold text-xl inline-block w-auto min-w-[150px] m-0 p-0 h-[28px] align-baseline"
+                    style={{ margin: 0, verticalAlign: 'baseline' }}
                     autoFocus
                   />
-                </div>
-              ) : (
-                <CardTitle 
-                  onClick={startEditingName}
-                  className="cursor-text hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-                >
-                  {patchName}
-                </CardTitle>
-              )}
+                ) : (
+                  <span onClick={startEditingName}>{patchName}</span>
+                )}
+              </h1>
               {!isLoading && (
                 <div className="text-gray-500 text-sm mt-1 px-2">
                   {patchDescription || "No description"}
                 </div>
               )}
             </div>
-          </CardHeader>
-          <CardContent className="h-[calc(100%-5rem)]">
-            <div className="h-full w-full">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
-                onConnectStart={onConnectStart}
-                onConnectEnd={onConnectEnd}
-                onNodeClick={onNodeClick}
-                onPaneClick={onPaneClick}
-                onInit={(instance) => {
-                  console.log("ReactFlow initialized");
-                  console.log("Initial nodes:", nodes);
-                  console.log("Initial edges:", edges);
-                  setReactFlowInstance(instance as any);
-                }}
-                nodesDraggable={true}
-                fitView={false}
-                defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-                proOptions={{ hideAttribution: true }}
-                defaultEdgeOptions={{ type: 'default' }}
-              >
-                <Controls />
-                <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
-              </ReactFlow>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
+        
+        {/* Custom fit view button */}
+        <Panel position="top-right" className="p-2 m-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="bg-white hover:bg-gray-100 text-gray-700"
+            onClick={() => {
+              if (reactFlowInstance && nodes.length > 0) {
+                reactFlowInstance.fitView({ 
+                  padding: 0.2, 
+                  includeHiddenNodes: false,
+                  duration: 800 // Smooth animation
+                });
+              }
+            }}
+            title="Fit view to show all nodes"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              className="h-4 w-4"
+            >
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </Button>
+        </Panel>
+        
+        <Controls />
+        <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+        </ReactFlow>
       </div>
+      
       {selectedNode && (
-        <div className="w-1/3 border-l pl-4 h-full flex flex-col max-h-full overflow-hidden">
-          <div className="mb-2 py-2 flex justify-between items-start">
+        <div className="absolute top-0 right-0 w-1/3 h-full border-l shadow-lg" style={{ backgroundColor: panelBgColor }}>
+          <div className="py-2 px-4 border-b flex justify-between items-start">
             <div>
               <h3 className="text-lg font-semibold truncate max-w-full" title={selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}>
                 {selectedGear?.label || nodes.find(n => n.id === selectedNode)?.data?.label || "Gear"}
@@ -1361,7 +1495,7 @@ export default function PatchPage() {
               </svg>
             </Button>
           </div>
-          <div className="flex-grow overflow-hidden h-[calc(100%-3rem)]">
+          <div className="h-[calc(100%-4rem)] overflow-hidden">
             <ChatSidebar
               gearId={nodes.find(n => n.id === selectedNode)?.data?.gearId || ""}
               initialMessages={gearMessages}

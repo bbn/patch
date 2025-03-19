@@ -118,7 +118,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'chat' | 'examples' | 'log'>('chat');
 
   return (
-    <div className="w-full h-full flex flex-col bg-white text-sm">
+    <div className="w-full h-full flex flex-col text-sm">
       
       {/* Tabs */}
       <div className="p-2 border-b flex justify-center">
@@ -156,31 +156,28 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           {/* Messages container */}
           <div className="flex-grow overflow-y-auto p-3">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`mb-2 ${m.role === "user" ? "text-right" : "text-left"}`}
-              >
-                <span
-                  className={`inline-block p-1.5 rounded-lg text-xs ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
+              <div key={m.id} className="mb-3 text-left">
+                <div
+                  className={`text-xs ${m.role === "user" ? "text-blue-700" : "text-gray-800"}`}
                 >
                   {renderMessageContent(m.content, m.role)}
-                </span>
+                </div>
               </div>
             ))}
             {isLoading && (
-              <div className="text-left">
-                <span className="inline-block p-1.5 rounded-lg text-xs bg-gray-200 text-black">
-                  AI is thinking...
-                </span>
+              <div className="mb-3 text-left">
+                <div className="text-xs text-gray-800">
+                  Thinking...
+                </div>
               </div>
             )}
             {error && (
-              <div className="text-left mt-2">
-                <span className="inline-block p-1.5 rounded-lg text-xs bg-red-100 text-red-800 border border-red-300">
+              <div className="mb-3 text-left">
+                <div className="text-xs text-red-600">
                   Error: {typeof error === 'string' ? error : 
                          error?.message ? error.message : 
                          'Failed to get response'}
-                </span>
+                </div>
               </div>
             )}
           </div>

@@ -30,14 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <header className="border-b py-2">
-          <div className="container mx-auto flex items-center">
-            <h1 className="text-xl font-bold">
-              <Link href="/">patch.land</Link>
-            </h1>
-          </div>
-        </header>
-        <main className="h-[calc(100vh-3.5rem)]">
+        <main className="h-screen">
           {children}
         </main>
       </body>

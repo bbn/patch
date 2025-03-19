@@ -38,6 +38,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ gearId: string }> }
 ) {
+  // Declare gear variable outside the try block so it's accessible in the catch block
+  let gear;
+  
   // In the latest Next.js, background tasks need to run after returning response
   // We'll handle this differently
   try {
@@ -101,12 +104,15 @@ export async function POST(
     }
 
     // Try to find the gear
-    const gear = await Gear.findById(gearId);
+    gear = await Gear.findById(gearId);
     
     if (!gear) {
       console.log("Gear not found:", gearId);
       return new Response("Gear not found", { status: 404 });
     }
+    
+    // Set the processing flag to true at the start
+    await gear.setIsProcessing(true);
 
     // Special handling for example outputs
     if (source === 'example_output') {
@@ -133,6 +139,9 @@ export async function POST(
         console.log(`No forwarding needed for example output from gear ${gearId}`);
       }
       
+      // Set processing to false before returning for example outputs too
+      await gear.setIsProcessing(false);
+      
       // Return early with the original message as output
       return Response.json({ output: message });
     }
@@ -150,6 +159,9 @@ export async function POST(
     } else {
       console.log(`  Output is empty or undefined!`);
     }
+    
+    // Set the processing flag to false once processing is complete
+    await gear.setIsProcessing(false);
     
     // Create a log entry based on shouldCreateLog flag
     if (shouldCreateLog) {
@@ -279,6 +291,12 @@ export async function POST(
     return response;
   } catch (error) {
     console.error("Error processing gear input:", error);
+    
+    // Make sure to set isProcessing to false in case of error
+    if (gear) {
+      await gear.setIsProcessing(false);
+    }
+    
     return Response.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
@@ -319,6 +337,7 @@ export async function GET(
       exampleInputs: gear.exampleInputs,
       label: gear.label,
       log: gear.log,
+      isProcessing: gear.isProcessing,
     });
   } catch (error) {
     console.error("Error getting gear:", error);

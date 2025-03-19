@@ -37,4 +37,5 @@ export interface GearData {
   patchId?: string; // The ID of the patch this gear belongs to
   nodeId?: string;  // The ID of the node in the patch this gear corresponds to
   position?: { x: number; y: number }; // Position in the ReactFlow canvas
+  isProcessing?: boolean; // Flag to indicate if the gear is currently processing
 }
