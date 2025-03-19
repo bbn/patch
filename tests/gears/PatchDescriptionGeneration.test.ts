@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
-import { Patch } from '@/lib/models/Patch';
-import { Gear } from '@/lib/models/Gear';
+import { Patch } from '@/lib/models/patch';
+import { Gear } from '@/lib/models/gear';
 
 // Mock the Gear and fetch
 jest.mock('next/navigation', () => ({
@@ -19,23 +19,15 @@ describe('Patch Description Generation', () => {
     // Save original fetch
     originalFetch = global.fetch;
     // Mock fetch for label endpoint
-    global.fetch = jest.fn().mockImplementation(async (url, options) => {
-      if (url.toString().includes('/label')) {
-        return {
-          ok: true,
-          headers: {
-            get: () => 'application/json'
-          },
-          json: async () => ({ content: 'Generated description for test patch' }),
-          text: async () => 'Generated description for test patch',
-        };
-      }
-      
+    global.fetch = jest.fn().mockImplementation(async () => {
       return {
         ok: true,
-        json: async () => ({}),
-        text: async () => '',
-      };
+        headers: {
+          get: () => 'application/json'
+        },
+        json: async () => ({ content: 'Generated description for test patch' }),
+        text: async () => 'Generated description for test patch',
+      } as unknown as Response;
     });
   });
   

@@ -1,8 +1,8 @@
-import { Gear } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/gear';
 import { POST } from '@/app/api/gears/[gearId]/route';
 
 // Mock the Gear model and its implementation
-jest.mock('@/lib/models/Gear');
+jest.mock('@/lib/models/gear');
 
 // Utility function to create test requests
 const createRequest = (body: any, gearId: string = 'A') => new Request(

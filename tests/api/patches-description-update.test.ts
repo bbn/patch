@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { NextRequest, NextResponse } from 'next/server';
-import { Patch } from '@/lib/models/Patch';
-import { Gear } from '@/lib/models/Gear';
+import { Patch } from '@/lib/models/patch';
+import { Gear } from '@/lib/models/gear';
 import { saveToKV, getFromKV, listKeysFromKV } from '@/lib/kv';
 
 // Mock the GET handler from the patches API route
@@ -38,24 +38,16 @@ describe('Patch Description in API Responses', () => {
     originalFetch = global.fetch;
     
     // Mock fetch to handle LLM API calls
-    global.fetch = jest.fn().mockImplementation(async (url, options) => {
-      if (url.toString().includes('/label')) {
-        return {
-          ok: true,
-          headers: {
-            get: () => 'application/json',
-          },
-          json: async () => ({ content: 'A test patch that connects data processing gears' }),
-          text: async () => 'A test patch that connects data processing gears',
-        };
-      }
-      
+    global.fetch = jest.fn().mockImplementation(async () => {
       return {
         ok: true,
-        json: async () => ({}),
-        text: async () => '',
-      };
-    });
+        headers: {
+          get: () => 'application/json',
+        },
+        json: async () => ({ content: 'A test patch that connects data processing gears' }),
+        text: async () => 'A test patch that connects data processing gears',
+      } as unknown as Response;
+    })
   });
   
   afterAll(() => {
@@ -174,24 +166,16 @@ describe('Patch Description in API Responses', () => {
     const initialDescription = testPatch.description;
     
     // Mock a different description for the regeneration
-    global.fetch = jest.fn().mockImplementation(async (url, options) => {
-      if (url.toString().includes('/label')) {
-        return {
-          ok: true,
-          headers: {
-            get: () => 'application/json',
-          },
-          json: async () => ({ content: 'Updated description after regeneration' }),
-          text: async () => 'Updated description after regeneration',
-        };
-      }
-      
+    global.fetch = jest.fn().mockImplementation(async () => {
       return {
         ok: true,
-        json: async () => ({}),
-        text: async () => '',
-      };
-    });
+        headers: {
+          get: () => 'application/json',
+        },
+        json: async () => ({ content: 'Updated description after regeneration' }),
+        text: async () => 'Updated description after regeneration',
+      } as unknown as Response;
+    })
     
     // Trigger manual regeneration
     const regenerateRequest = new NextRequest('http://localhost:3000/api/patches?regenerate_all_descriptions=true');

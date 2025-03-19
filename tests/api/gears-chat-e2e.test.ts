@@ -1,4 +1,4 @@
-import { Gear } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/gear';
 import { Message } from '@/lib/models/types';
 import { createIdGenerator, streamText } from 'ai';
 

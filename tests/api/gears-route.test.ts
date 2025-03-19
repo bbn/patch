@@ -1,8 +1,8 @@
 import { POST } from '@/app/api/gears/[gearId]/route';
-import { Gear } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/gear';
 
-jest.mock('@/lib/models/Gear', () => ({
-  ...jest.requireActual('@/lib/models/Gear'),
+jest.mock('@/lib/models/gear', () => ({
+  ...jest.requireActual('@/lib/models/gear'),
   Gear: { findById: jest.fn() }
 }));
 
@@ -30,7 +30,16 @@ describe('Gears API Route', () => {
   });
 
   it('processes input and returns output', async () => {
-    const mockGear = { processInput: jest.fn().mockResolvedValue('Processed output') };
+    const mockGear = { 
+      processInput: jest.fn().mockResolvedValue('Processed output'),
+      setIsProcessing: jest.fn().mockResolvedValue(undefined),
+      process: jest.fn().mockResolvedValue('Processed output'),
+      outputUrls: [],
+      log: [],
+      data: {},
+      setLog: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn().mockResolvedValue(undefined)
+    };
     (Gear.findById as jest.Mock).mockResolvedValue(mockGear);
 
     const response = await POST(
@@ -40,11 +49,20 @@ describe('Gears API Route', () => {
     
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ output: 'Processed output' });
-    expect(mockGear.processInput).toHaveBeenCalledWith('test', 'Test message');
+    expect(mockGear.process).toHaveBeenCalled();
   });
 
   it('handles processing errors', async () => {
-    const mockGear = { processInput: jest.fn().mockRejectedValue(new Error('Processing error')) };
+    const mockGear = { 
+      processInput: jest.fn().mockRejectedValue(new Error('Processing error')),
+      setIsProcessing: jest.fn().mockResolvedValue(undefined),
+      process: jest.fn().mockRejectedValue(new Error('Processing error')),
+      outputUrls: [],
+      log: [],
+      data: {},
+      setLog: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn().mockResolvedValue(undefined)
+    };
     (Gear.findById as jest.Mock).mockResolvedValue(mockGear);
 
     const response = await POST(

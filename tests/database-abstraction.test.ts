@@ -2,12 +2,16 @@
  * Tests for the database abstraction layer
  */
 
-import { Patch, PatchData } from '../lib/models/Patch';
-import { Gear, GearData } from '../lib/models/Gear';
+import { Patch, PatchData } from '../lib/models/patch';
+import { Gear, GearData } from '../lib/models/gear';
 import { getDatabase } from '../lib/database';
+
+// Import the actual module so we can access the mock
+import * as databaseModule from '../lib/database';
 
 // Mock the database module
 jest.mock('../lib/database', () => {
+  // Create mock functions with full Jest mock functionality
   const mockDb = {
     saveDocument: jest.fn(),
     getDocument: jest.fn(),
@@ -27,6 +31,7 @@ jest.mock('../lib/database', () => {
   
   return {
     getDatabase: jest.fn(() => mockDb),
+    __mockDb: mockDb,  // Export the mockDb for direct access
   };
 });
 
@@ -49,7 +54,8 @@ describe('Database Abstraction', () => {
         updatedAt: Date.now(),
       };
       
-      database.getPatch.mockResolvedValue(mockPatchData);
+      // Use mocking on the function directly
+      jest.spyOn(database, 'getPatch').mockResolvedValue(mockPatchData);
       
       // Execute
       const patch = await Patch.findById('test-patch-id');
@@ -67,7 +73,8 @@ describe('Database Abstraction', () => {
         name: 'Test Patch',
       });
       
-      database.savePatch.mockResolvedValue(undefined);
+      // Use mocking on the function directly
+      jest.spyOn(database, 'savePatch').mockResolvedValue(undefined);
       
       // Execute
       await patch.save();
@@ -88,7 +95,8 @@ describe('Database Abstraction', () => {
         updatedAt: Date.now(),
       };
       
-      database.getGear.mockResolvedValue(mockGearData);
+      // Use mocking on the function directly
+      jest.spyOn(database, 'getGear').mockResolvedValue(mockGearData);
       
       // Execute
       const gear = await Gear.findById('test-gear-id');
@@ -105,7 +113,8 @@ describe('Database Abstraction', () => {
         id: 'test-gear-id',
       });
       
-      database.saveGear.mockResolvedValue(undefined);
+      // Use mocking on the function directly
+      jest.spyOn(database, 'saveGear').mockResolvedValue(undefined);
       
       // Execute
       await gear.save();

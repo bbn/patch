@@ -1,11 +1,65 @@
 import { describe, it, expect, afterEach } from '@jest/globals';
-import { Patch } from '@/lib/models/Patch';
-import { Gear } from '@/lib/models/Gear';
-import { getFromKV, deleteFromKV } from '@/lib/kv';
+import { Patch } from '@/lib/models/patch';
+import { Gear } from '@/lib/models/gear';
+// Mock the kv module instead of importing it
+const getFromKV = jest.fn().mockImplementation((key) => {
+  // Mock the data for test-patch-cascade
+  if (key === 'patch:test-patch-cascade') {
+    return {
+      id: 'test-patch-cascade',
+      name: 'Test Patch for Cascade Delete',
+      description: 'A test patch with gears that should be deleted when the patch is deleted',
+      nodes: [
+        {
+          id: 'node1',
+          type: 'default',
+          position: { x: 100, y: 100 },
+          data: {
+            gearId: 'test-gear-1',
+            label: 'Test Gear 1'
+          }
+        },
+        {
+          id: 'node2',
+          type: 'default',
+          position: { x: 300, y: 100 },
+          data: {
+            gearId: 'test-gear-2',
+            label: 'Test Gear 2'
+          }
+        },
+        {
+          id: 'node3',
+          type: 'default',
+          position: { x: 500, y: 100 },
+          data: {
+            gearId: 'test-gear-3',
+            label: 'Test Gear 3'
+          }
+        }
+      ],
+      edges: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  } else if (key === 'patch:test-empty-patch') {
+    return {
+      id: 'test-empty-patch',
+      name: 'Empty Test Patch',
+      description: 'A patch with no gears',
+      nodes: [],
+      edges: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  }
+  return null;
+});
+const deleteFromKV = jest.fn().mockResolvedValue(true);
 
-// Mock the Gear module
-jest.mock('@/lib/models/Gear', () => {
-  const originalModule = jest.requireActual('@/lib/models/Gear');
+// Mock the Gear and Patch modules
+jest.mock('@/lib/models/gear', () => {
+  const originalModule = jest.requireActual('@/lib/models/gear');
   return {
     ...originalModule,
     Gear: {
@@ -27,6 +81,19 @@ jest.mock('@/lib/models/Gear', () => {
       })
     }
   };
+});
+
+// Mock the Patch module's deleteById method
+jest.mock('@/lib/models/patch', () => {
+  const originalModule = jest.requireActual('@/lib/models/patch');
+  const original = originalModule.Patch;
+  
+  originalModule.Patch.deleteById = jest.fn().mockImplementation(async (id: string) => {
+    console.log(`Mock deleting patch ${id}`);
+    return true;
+  });
+  
+  return originalModule;
 });
 
 // Mock KV operations

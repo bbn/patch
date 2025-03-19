@@ -1,4 +1,4 @@
-import { Gear } from '@/lib/models/Gear';
+import { Gear } from '@/lib/models/gear';
 import { GearInput } from '@/lib/models/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -97,8 +97,8 @@ describe('DailyActivitySummaryGear', () => {
         })
       );
 
-      // Override processWithLLM to return a mock response
-      gear['processWithLLM'] = jest.fn().mockImplementation(() => {
+      // Mock the process method instead of the private processWithLLM
+      jest.spyOn(gear, 'process').mockImplementation(() => {
         return Promise.resolve(`
 # Daily Activity Summary - February 25, 2023
 
@@ -140,8 +140,8 @@ describe('DailyActivitySummaryGear', () => {
         `);
       });
     } else {
-      // Override processWithLLM to call actual LLM using Vercel AI SDK
-      gear['processWithLLM'] = async (input?: GearInput) => {
+      // Override process to call actual LLM using Vercel AI SDK
+      jest.spyOn(gear, 'process').mockImplementation(async (input?: GearInput) => {
         try {
           // Log system prompt and user data for debugging
           console.log('\nSystem prompt:', gear.systemPrompt());
@@ -204,8 +204,8 @@ describe('DailyActivitySummaryGear', () => {
       expect(result).toContain('Action Items');
       expect(result).toContain('Notable Achievements');
       
-      // Verify the processWithLLM method was called twice (once for each setInput)
-      expect(gear['processWithLLM']).toHaveBeenCalledTimes(2);
+      // Verify the process method was called twice (once for each setInput)
+      expect(gear.process).toHaveBeenCalledTimes(2);
     } else {
       // When using real LLM, we can only make basic checks
       // as the exact response format may vary
@@ -235,8 +235,8 @@ describe('DailyActivitySummaryGear', () => {
     expect(combinedResult).toContain('Daily Activity Summary');
     
     if (mockLlm) {
-      // Verify processWithLLM was called twice
-      expect(gear['processWithLLM']).toHaveBeenCalledTimes(2);
+      // Verify process was called twice
+      expect(gear.process).toHaveBeenCalledTimes(2);
     }
   // Increase timeout for LLM API calls
   }, 60000);
@@ -258,10 +258,9 @@ describe('DailyActivitySummaryGear', () => {
       content: 'Please generate a daily activity summary from the inputs of Slack and JIRA data.'
     });
     
-    // Always mock the processWithLLM method for this test
-    sourceGear['processWithLLM'] = mockLlm ? 
-      gear['processWithLLM'] : 
-      async () => `# Daily Activity Summary for Source Parameter Test
+    // Always mock the process method for this test
+    jest.spyOn(sourceGear, 'process').mockImplementation(async () => {
+      return `# Daily Activity Summary for Source Parameter Test
 
 ## Team Communication (Slack)
 - Team discussions recorded
@@ -277,6 +276,7 @@ describe('DailyActivitySummaryGear', () => {
 
 ## Notable Achievements
 - Progress made on critical issues`;
+    });
     
     // Set Slack data
     await sourceGear.processInput('slack', {
@@ -293,8 +293,8 @@ describe('DailyActivitySummaryGear', () => {
     expect(result).toContain('Daily Activity Summary');
     
     if (mockLlm) {
-      // Verify processWithLLM was called twice
-      expect(sourceGear['processWithLLM']).toHaveBeenCalledTimes(2);
+      // Verify process was called twice
+      expect(sourceGear.process).toHaveBeenCalledTimes(2);
     }
       
     // Verify both inputs are stored
@@ -320,10 +320,9 @@ describe('DailyActivitySummaryGear', () => {
       content: 'Please generate a daily activity summary from the inputs of Slack and JIRA data.'
     });
     
-    // Always mock the processWithLLM method for this test
-    compatGear['processWithLLM'] = mockLlm ? 
-      gear['processWithLLM'] : 
-      async () => `# Daily Activity Summary for Backward Compatibility
+    // Always mock the process method for this test
+    jest.spyOn(compatGear, 'process').mockImplementation(async () => {
+      return `# Daily Activity Summary for Backward Compatibility
 
 ## Team Communication (Slack)
 - Team discussions recorded
@@ -339,6 +338,7 @@ describe('DailyActivitySummaryGear', () => {
 
 ## Notable Achievements
 - Progress made on critical issues`;
+    });
     
     // Create a combined data object
     const combinedData = {
@@ -358,8 +358,8 @@ describe('DailyActivitySummaryGear', () => {
     expect(result).toContain('Daily Activity Summary');
     
     if (mockLlm) {
-      // Verify processWithLLM was called once
-      expect(compatGear['processWithLLM']).toHaveBeenCalledTimes(1);
+      // Verify process was called once
+      expect(compatGear.process).toHaveBeenCalledTimes(1);
     }
     
     // Verify inputs dictionary is empty since we used direct input

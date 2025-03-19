@@ -1,5 +1,5 @@
-import { Gear } from '@/lib/models/Gear';
-import { Patch } from '@/lib/models/Patch';
+import { Gear } from '@/lib/models/gear';
+import { Patch } from '@/lib/models/patch';
 
 // We'll use Jest's mocking capabilities to avoid actual API calls
 jest.mock('next/navigation', () => ({
@@ -19,12 +19,12 @@ describe('Gear Connection in ReactFlow', () => {
     // Save original fetch
     originalFetch = global.fetch;
     // Mock fetch
-    global.fetch = jest.fn().mockImplementation(async (url, options) => {
+    global.fetch = jest.fn().mockImplementation(async () => {
       return {
         ok: true,
         json: async () => ({}),
         text: async () => '',
-      };
+      } as unknown as Response;
     });
   });
   
@@ -104,7 +104,10 @@ describe('Gear Connection in ReactFlow', () => {
     await patch.addEdge(edge);
     
     // Verify the addOutputUrl method was called with the expected URL
+    // The method is called with (url, skipSave) where skipSave is optional
     const expectedUrl = '/api/gears/test-gear-b';
+    expect(gearA.addOutputUrl).toHaveBeenCalled();
+    // Pass the expected URL directly
     expect(gearA.addOutputUrl).toHaveBeenCalledWith(expectedUrl);
     
     // Verify the outputUrls array contains the expected URL
