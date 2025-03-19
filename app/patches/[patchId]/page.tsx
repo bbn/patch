@@ -1139,8 +1139,15 @@ export default function PatchPage() {
     // Use requestAnimationFrame to avoid React rendering conflicts
     requestAnimationFrame(() => {
       try {
-        // If Command/Meta key is pressed, handle zooming
+        // If Command/Meta key is pressed, handle zooming ONLY with vertical scroll
         if (commandKeyPressed) {
+          // Only handle vertical scroll for zooming when Command key is pressed
+          // Ignore horizontal scroll with Command key
+          if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+            // This is primarily a horizontal scroll event with command key, so do nothing
+            return;
+          }
+          
           const delta = event.deltaY < 0 ? 1.1 : 0.9;
           
           // Get the current viewport
@@ -1170,7 +1177,7 @@ export default function PatchPage() {
           // Set the new viewport
           reactFlowInstance.setViewport({ x: newX, y: newY, zoom: newZoom });
         } else {
-          // Otherwise, handle panning
+          // No command key, handle normal panning
           const { x, y, zoom } = reactFlowInstance.getViewport();
           reactFlowInstance.setViewport({
             x: x - event.deltaX,
