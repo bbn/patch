@@ -46,6 +46,7 @@ describe('Gear Forwarding API Route', () => {
         
         return output;
       }),
+      process: jest.fn().mockResolvedValue('Output from Gear A'),
       outputUrls: ['/api/gears/B'], // Gear A is connected to Gear B
       forwardOutputToGears: jest.fn().mockResolvedValue(undefined),
       setIsProcessing: jest.fn().mockResolvedValue(undefined)
@@ -54,6 +55,7 @@ describe('Gear Forwarding API Route', () => {
     mockGearB = {
       id: 'B',
       processInput: jest.fn().mockResolvedValue('Output from Gear B'),
+      process: jest.fn().mockResolvedValue('Output from Gear B'),
       outputUrls: [],
       forwardOutputToGears: jest.fn().mockResolvedValue(undefined),
       setIsProcessing: jest.fn().mockResolvedValue(undefined)
