@@ -156,31 +156,37 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           {/* Messages container */}
           <div className="flex-grow overflow-y-auto p-3">
             {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`mb-2 ${m.role === "user" ? "text-right" : "text-left"}`}
-              >
-                <span
-                  className={`inline-block p-1.5 rounded-lg text-xs ${m.role === "user" ? "bg-blue-500 text-white" : "bg-gray-200 text-black"}`}
+              <div key={m.id} className="mb-3 text-left">
+                <div className="text-xs font-semibold mb-0.5">
+                  {m.role === "user" ? "You" : "Assistant"}:
+                </div>
+                <div
+                  className={`text-xs ${m.role === "user" ? "text-blue-700" : "text-gray-800"}`}
                 >
                   {renderMessageContent(m.content, m.role)}
-                </span>
+                </div>
               </div>
             ))}
             {isLoading && (
-              <div className="text-left">
-                <span className="inline-block p-1.5 rounded-lg text-xs bg-gray-200 text-black">
-                  AI is thinking...
-                </span>
+              <div className="mb-3 text-left">
+                <div className="text-xs font-semibold mb-0.5">
+                  Assistant:
+                </div>
+                <div className="text-xs text-gray-800">
+                  Thinking...
+                </div>
               </div>
             )}
             {error && (
-              <div className="text-left mt-2">
-                <span className="inline-block p-1.5 rounded-lg text-xs bg-red-100 text-red-800 border border-red-300">
-                  Error: {typeof error === 'string' ? error : 
-                         error?.message ? error.message : 
-                         'Failed to get response'}
-                </span>
+              <div className="mb-3 text-left">
+                <div className="text-xs font-semibold text-red-600 mb-0.5">
+                  Error:
+                </div>
+                <div className="text-xs text-red-600">
+                  {typeof error === 'string' ? error : 
+                   error?.message ? error.message : 
+                   'Failed to get response'}
+                </div>
               </div>
             )}
           </div>
