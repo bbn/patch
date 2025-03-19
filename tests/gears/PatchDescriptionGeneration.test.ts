@@ -8,6 +8,8 @@ jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
 }));
 
+// We'll mock the generateDescription method directly instead of mocking the AI SDK
+
 describe('Patch Description Generation', () => {
   let testGear: Gear;
   let testPatch: Patch;
@@ -62,8 +64,11 @@ describe('Patch Description Generation', () => {
     jest.spyOn(testPatch, 'save').mockImplementation(async () => {});
     jest.spyOn(testGear, 'save').mockImplementation(async () => {});
     
-    // Spy on generateDescription
-    jest.spyOn(testPatch, 'generateDescription');
+    // Mock generateDescription to actually set description on the patch
+    jest.spyOn(Patch.prototype, 'generateDescription').mockImplementation(async function(this: any) {
+      this.description = 'Test generated description for the patch';
+      return this.description;
+    });
   });
   
   afterEach(() => {
