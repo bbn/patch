@@ -166,6 +166,149 @@ jest.mock('@/lib/firebase', () => {
   };
 });
 
+// Mock Firebase Admin SDK
+jest.mock('@/lib/server/firebase-admin', () => {
+  return {
+    admin: {
+      firestore: jest.fn(() => ({})),
+      app: jest.fn(() => ({}))
+    },
+    adminDb: {
+      collection: jest.fn(() => ({
+        doc: jest.fn(() => ({
+          set: jest.fn(() => Promise.resolve()),
+          get: jest.fn(() => Promise.resolve({
+            exists: true,
+            data: () => ({})
+          })),
+          delete: jest.fn(() => Promise.resolve())
+        })),
+        where: jest.fn(() => ({
+          get: jest.fn(() => Promise.resolve({
+            docs: []
+          }))
+        })),
+        get: jest.fn(() => Promise.resolve({
+          docs: []
+        }))
+      }))
+    },
+    __esModule: true
+  };
+});
+
+// Mock Firebase Admin Database
+jest.mock('@/lib/server/admin-database', () => {
+  return {
+    saveGear: jest.fn((id, data) => {
+      if (!mockStore.gears) mockStore.gears = {};
+      mockStore.gears[id] = { ...data };
+      return Promise.resolve();
+    }),
+    getGear: jest.fn((id) => {
+      if (!mockStore.gears) return Promise.resolve(null);
+      return Promise.resolve(mockStore.gears[id] || null);
+    }),
+    deleteGear: jest.fn((id) => {
+      if (!mockStore.gears) return Promise.resolve(false);
+      if (id in mockStore.gears) {
+        delete mockStore.gears[id];
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+    getAllGears: jest.fn(() => {
+      if (!mockStore.gears) return Promise.resolve([]);
+      return Promise.resolve(
+        Object.entries(mockStore.gears).map(([id, data]) => ({ id, ...data }))
+      );
+    }),
+    savePatch: jest.fn((id, data) => {
+      if (!mockStore.patches) mockStore.patches = {};
+      mockStore.patches[id] = { ...data };
+      return Promise.resolve();
+    }),
+    getPatch: jest.fn((id) => {
+      if (!mockStore.patches) return Promise.resolve(null);
+      return Promise.resolve(mockStore.patches[id] || null);
+    }),
+    deletePatch: jest.fn((id) => {
+      if (!mockStore.patches) return Promise.resolve(false);
+      if (id in mockStore.patches) {
+        delete mockStore.patches[id];
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+    getAllPatches: jest.fn(() => {
+      if (!mockStore.patches) return Promise.resolve([]);
+      return Promise.resolve(
+        Object.entries(mockStore.patches).map(([id, data]) => ({ id, ...data }))
+      );
+    }),
+    __esModule: true
+  };
+});
+
+// Mock the database module to provide test implementations
+jest.mock('@/lib/database', () => {
+  // Create a mock database implementation based on our in-memory store
+  const testDatabase = {
+    saveGear: jest.fn((id, data) => {
+      if (!mockStore.gears) mockStore.gears = {};
+      mockStore.gears[id] = { ...data };
+      return Promise.resolve();
+    }),
+    getGear: jest.fn((id) => {
+      if (!mockStore.gears) return Promise.resolve(null);
+      return Promise.resolve(mockStore.gears[id] || null);
+    }),
+    deleteGear: jest.fn((id) => {
+      if (!mockStore.gears) return Promise.resolve(false);
+      if (id in mockStore.gears) {
+        delete mockStore.gears[id];
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+    getAllGears: jest.fn(() => {
+      if (!mockStore.gears) return Promise.resolve([]);
+      return Promise.resolve(
+        Object.entries(mockStore.gears).map(([id, data]) => ({ id, ...data }))
+      );
+    }),
+    savePatch: jest.fn((id, data) => {
+      if (!mockStore.patches) mockStore.patches = {};
+      mockStore.patches[id] = { ...data };
+      return Promise.resolve();
+    }),
+    getPatch: jest.fn((id) => {
+      if (!mockStore.patches) return Promise.resolve(null);
+      return Promise.resolve(mockStore.patches[id] || null);
+    }),
+    deletePatch: jest.fn((id) => {
+      if (!mockStore.patches) return Promise.resolve(false);
+      if (id in mockStore.patches) {
+        delete mockStore.patches[id];
+        return Promise.resolve(true);
+      }
+      return Promise.resolve(false);
+    }),
+    getAllPatches: jest.fn(() => {
+      if (!mockStore.patches) return Promise.resolve([]);
+      return Promise.resolve(
+        Object.entries(mockStore.patches).map(([id, data]) => ({ id, ...data }))
+      );
+    })
+  };
+  
+  return {
+    getDatabase: jest.fn(() => testDatabase),
+    Database: jest.fn(),
+    __esModule: true
+  };
+});
+
 // Add global test mocking for fetch
 // Use proper Response constructor to ensure TypeScript compatibility
 const mockResponseText = 'Test response';
@@ -193,3 +336,18 @@ declare global {
 }
 
 (global as any).MOCK_LLMS = true;
+
+// Mock the AI SDK with proper implementation
+jest.mock('ai', () => {
+  return {
+    generateText: jest.fn().mockImplementation(() => Promise.resolve('Mocked AI response'))
+  };
+});
+
+jest.mock('@ai-sdk/openai', () => {
+  return {
+    openai: jest.fn(() => ({
+      modelId: 'gpt-4'
+    }))
+  };
+});
