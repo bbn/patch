@@ -12,7 +12,12 @@
     "test:daily": "jest tests/gears/DailyActivitySummaryGear.test.ts",
     "test:daily:mock": "jest tests/gears/DailyActivitySummaryGear.test.ts -- --mock-llms",
     "test:chaining": "jest tests/gears/GearChaining.test.ts",
-    "test:chaining:mock": "jest tests/gears/GearChaining.test.ts -- --mock-llms"
+    "test:chaining:mock": "jest tests/gears/GearChaining.test.ts -- --mock-llms",
+    "test:coverage": "jest --coverage",
+    "test:coverage:ci": "jest --coverage --ci",
+    "test:coverage:html": "jest --coverage --coverageReporters=html",
+    "test:coverage:models": "jest --coverage --collectCoverageFrom='lib/models/**/*.{ts,tsx}'",
+    "test:coverage:open": "npm run test:coverage:html && open coverage/index.html"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.1.13",

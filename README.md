@@ -53,6 +53,33 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Testing
+
+This project uses Jest for unit and integration testing. Run tests with:
+
+```bash
+npm test
+```
+
+### Test Coverage
+
+Test coverage is set up using Jest's built-in coverage reporter. Several test coverage commands are available:
+
+- `npm run test:coverage` - Run tests with console coverage report
+- `npm run test:coverage:html` - Generate HTML coverage report
+- `npm run test:coverage:open` - Generate HTML coverage report and open in browser
+- `npm run test:coverage:ci` - Run coverage in CI mode (checks against thresholds)
+- `npm run test:coverage:models` - Run coverage focused on model files only
+
+Coverage reports are generated in the `coverage` directory and include:
+
+- Line coverage - which lines of code were executed
+- Statement coverage - which statements were executed
+- Branch coverage - which branches of control structures were executed
+- Function coverage - which functions were called
+
+Coverage thresholds are set in `jest.config.js` to ensure minimum coverage requirements are met.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

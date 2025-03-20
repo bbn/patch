@@ -6,6 +6,13 @@
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 
+## Test Commands
+- `npm test` - Run all tests
+- `npm run test:mock-llm` - Run tests with mocked LLM responses
+- `npm run test:coverage` - Run tests with coverage report
+- `npm run test:coverage:open` - Generate and open HTML coverage report
+- `npm run test:coverage:ci` - Run coverage in CI mode (checks thresholds)
+
 ## Code Style
 - **TypeScript**: Strict mode enabled, target ES2017
 - **Imports**: Use named imports, type imports separate
