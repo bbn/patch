@@ -91,13 +91,16 @@ describe('Gear Chat End-to-End', () => {
     // Check that messages were saved
     const gearAfterFirstMessage = await Gear.findById(gearId);
     expect(gearAfterFirstMessage).not.toBeNull();
-    // After examining the route.ts, it appears only the assistant message is properly saved
-    // In the real implementation, the user message is added to a temporary GearChat
-    // but not persisted to the gear's messages array
-    expect(gearAfterFirstMessage!.messages.length).toBe(2); // System + assistant
+    // After examining the route.ts, it appears both the user and assistant messages are saved
+    // User message is added to the gear at line 60, and assistant message at line 259
+    expect(gearAfterFirstMessage!.messages.length).toBe(3); // System + user + assistant
     expect(gearAfterFirstMessage!.messages[0].role).toBe('system');
-    expect(gearAfterFirstMessage!.messages[1].role).toBe('assistant');
-    expect(gearAfterFirstMessage!.messages[1].content).toBe('I am doing well, thank you!');
+    // User message is added at index 1
+    expect(gearAfterFirstMessage!.messages[1].role).toBe('user');
+    expect(gearAfterFirstMessage!.messages[1].content).toBe('Hello, how are you?');
+    // Assistant message is added at index 2
+    expect(gearAfterFirstMessage!.messages[2].role).toBe('assistant');
+    expect(gearAfterFirstMessage!.messages[2].content).toBe('I am doing well, thank you!');
     
     // Second user message
     const userMessage2 = { role: 'user' as const, content: 'What is your favorite color?' };
@@ -122,13 +125,17 @@ describe('Gear Chat End-to-End', () => {
     // Check that all messages were saved (conversation history maintained)
     const gearAfterSecondMessage = await Gear.findById(gearId);
     expect(gearAfterSecondMessage).not.toBeNull();
-    expect(gearAfterSecondMessage!.messages.length).toBe(3); // System + 2 assistant messages
+    expect(gearAfterSecondMessage!.messages.length).toBe(5); // System + 2 user + 2 assistant messages
     
     // Verify the messages
     expect(gearAfterSecondMessage!.messages[0].role).toBe('system');
-    expect(gearAfterSecondMessage!.messages[1].role).toBe('assistant');
-    expect(gearAfterSecondMessage!.messages[1].content).toBe('I am doing well, thank you!');
+    expect(gearAfterSecondMessage!.messages[1].role).toBe('user');
+    expect(gearAfterSecondMessage!.messages[1].content).toBe('Hello, how are you?');
     expect(gearAfterSecondMessage!.messages[2].role).toBe('assistant');
-    expect(gearAfterSecondMessage!.messages[2].content).toBe('I do not have preferences, but I can help with colors!');
+    expect(gearAfterSecondMessage!.messages[2].content).toBe('I am doing well, thank you!');
+    expect(gearAfterSecondMessage!.messages[3].role).toBe('user');
+    expect(gearAfterSecondMessage!.messages[3].content).toBe('What is your favorite color?');
+    expect(gearAfterSecondMessage!.messages[4].role).toBe('assistant');
+    expect(gearAfterSecondMessage!.messages[4].content).toBe('I do not have preferences, but I can help with colors!');
   });
 });
