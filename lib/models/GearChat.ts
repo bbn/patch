@@ -1,5 +1,7 @@
 import { Message, Role } from "./types";
 
+// This is a simplified version of GearChat that only maintains
+// the minimum functionality needed for backward compatibility
 export class GearChat {
   private messages: Message[];
   private gearId: string;

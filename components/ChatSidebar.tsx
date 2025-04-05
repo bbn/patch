@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useChat } from "ai/react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -24,12 +22,9 @@ import { ExampleInput, GearLogEntry } from "@/lib/models/gear";
 import { AnyMessagePart } from "@/lib/models/types";
 import { formatMessageParts, toMessageParts, extractTextFromParts } from "@/lib/utils";
 
-// Don't need to redeclare GearLogEntry - it's already declared in the model
-
-interface ChatSidebarProps {
+interface PromptSidebarProps {
   gearId: string;
   initialMessages: { id?: string; role: string; content: string }[];
-  onMessageSent: (message: { role: string; content: string }) => void;
   exampleInputs: ExampleInput[];
   logEntries?: GearLogEntry[];
   onAddExample: (name: string, input: string) => Promise<ExampleInput | undefined | void>;
@@ -40,12 +35,12 @@ interface ChatSidebarProps {
   onSendOutput?: (id: string, output: any) => Promise<void>;
   onClearLog?: () => Promise<void>;
   onClose?: () => void;
+  onSubmitPrompt: (prompt: string) => Promise<void>;
 }
 
-export const ChatSidebar: React.FC<ChatSidebarProps> = ({
+export const ChatSidebar: React.FC<PromptSidebarProps> = ({
   gearId,
   initialMessages,
-  onMessageSent,
   exampleInputs,
   logEntries = [],
   onAddExample,
@@ -56,66 +51,34 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onSendOutput,
   onClearLog,
   onClose,
+  onSubmitPrompt,
 }) => {
-  // Format initialMessages for the useChat hook
-  const formattedInitialMessages = initialMessages.map(msg => ({
-    id: msg.id || crypto.randomUUID(),
-    role: msg.role as "system" | "user" | "assistant" | "data",
-    content: msg.content
-  }));
+  const [activeTab, setActiveTab] = useState<'prompt' | 'examples' | 'log'>('prompt');
+  const [promptInput, setPromptInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Use the Vercel AI SDK useChat hook
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: `/api/gears/${gearId}/chat`,
-    id: `chat-${gearId}`,
-    initialMessages: formattedInitialMessages,
-    onResponse: (response) => {
-      if (!response.ok) {
-        console.warn(`Chat API error: ${response.status} ${response.statusText}`);
-        // Log additional details if available
-        response.json().then(data => {
-          console.error('Chat API error details:', data);
-        }).catch(e => {
-          console.error('Failed to parse error response:', e);
-        });
-      } else {
-        console.log('Chat API successful response');
-      }
-    },
-    onFinish: (message) => {
-      // IMPORTANT FIX: DO NOT call onMessageSent here
-      // The server is now responsible for saving the message to avoid duplicates
-      if (message.content && message.role === "assistant") {
-        console.log('Chat completed successfully, server has already saved the response');
-        // No longer calling onMessageSent here since the route.ts API endpoint 
-        // now properly handles content parsing and saving
-      }
-    },
-    onError: (error) => {
-      console.error('Chat API error in useChat hook:', error);
-    }
-  });
+  // Get the system message from initialMessages
+  const systemMessage = initialMessages.find(msg => msg.role === 'system')?.content || '';
 
-  // When user sends a message, we need to notify the parent
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handlePromptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Only proceed if there's content to send
-    if (!input.trim()) return;
+    if (!promptInput.trim()) return;
     
-    // IMPORTANT CHANGE: We no longer call onMessageSent here for user messages
-    // The server-side endpoint will handle saving the user message
-    // This prevents duplicate messages when refreshing the page
-
-    // Just submit the form using the handler from useChat
-    // The API endpoint will save the message to the database
-    handleSubmit(e);
+    setIsLoading(true);
+    setError(null);
     
-    // Add a log to notify that we're letting the server handle message saving
-    console.log('User message sent - server will handle saving');
+    try {
+      await onSubmitPrompt(promptInput);
+      setPromptInput(''); // Clear input after successful submission
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process prompt');
+      console.error('Error processing prompt:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
-
-  const [activeTab, setActiveTab] = useState<'chat' | 'examples' | 'log'>('chat');
 
   return (
     <div className="w-full h-full flex flex-col text-sm">
@@ -124,12 +87,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       <div className="p-2 border-b flex justify-center">
         <div className="flex">
           <Button
-            variant={activeTab === 'chat' ? 'default' : 'outline'}
-            onClick={() => setActiveTab('chat')}
+            variant={activeTab === 'prompt' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('prompt')}
             size="sm"
             className="rounded-r-none text-xs"
           >
-            Chat
+            Prompt
           </Button>
           <Button
             variant={activeTab === 'examples' ? 'default' : 'outline'}
@@ -150,53 +113,40 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         </div>
       </div>
 
-      {/* Chat Tab */}
-      {activeTab === 'chat' && (
-        <>
-          {/* Messages container */}
-          <div className="flex-grow overflow-y-auto p-3">
-            {messages.map((m) => (
-              <div key={m.id} className="mb-3 text-left">
-                <div
-                  className={`text-xs ${m.role === "user" ? "text-blue-700" : "text-gray-800"}`}
-                >
-                  {renderMessageContent(m.content, m.role)}
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="mb-3 text-left">
-                <div className="text-xs text-gray-800">
-                  Thinking...
-                </div>
-              </div>
-            )}
-            {error && (
-              <div className="mb-3 text-left">
-                <div className="text-xs text-red-600">
-                  Error: {typeof error === 'string' ? error : 
-                         error?.message ? error.message : 
-                         'Failed to get response'}
-                </div>
-              </div>
-            )}
+      {/* Prompt Tab */}
+      {activeTab === 'prompt' && (
+        <div className="flex-grow flex flex-col p-3">
+          <div className="mb-4">
+            <h3 className="text-sm font-medium mb-2">System Instruction</h3>
+            <div className="text-xs p-3 bg-gray-50 border rounded-md whitespace-pre-wrap">
+              {systemMessage}
+            </div>
           </div>
           
-          {/* Input form */}
-          <div className="p-2 border-t mt-auto">
-            <form onSubmit={handleFormSubmit} className="flex w-full space-x-2">
-              <Input
-                value={input}
-                onChange={handleInputChange}
-                placeholder="Type your message..."
-                className="flex-grow text-xs"
+          <div className="flex-grow flex flex-col">
+            <h3 className="text-sm font-medium mb-2">Input Prompt</h3>
+            <form onSubmit={handlePromptSubmit} className="flex flex-col flex-grow">
+              <Textarea
+                value={promptInput}
+                onChange={(e) => setPromptInput(e.target.value)}
+                placeholder="Enter your input prompt..."
+                className="flex-grow text-xs min-h-[100px] mb-2"
               />
-              <Button type="submit" disabled={isLoading} className="text-xs">
-                Send
+              {error && (
+                <div className="text-red-500 text-xs mb-2">
+                  {error}
+                </div>
+              )}
+              <Button 
+                type="submit" 
+                disabled={isLoading || !promptInput.trim()} 
+                className="self-end"
+              >
+                {isLoading ? 'Processing...' : 'Process'}
               </Button>
             </form>
           </div>
-        </>
+        </div>
       )}
 
       {/* Examples Tab */}
@@ -338,55 +288,4 @@ const formatSource = (source: any): string => {
   }
   
   return 'unknown';
-};
-
-// Process message content for display
-const renderMessageContent = (content: string, role: string): string => {
-  // Only process assistant messages
-  if (role !== 'assistant') return content;
-  
-  try {
-    // Check if the content is JSON format
-    if (content.startsWith('[{') || content.startsWith('{')) {
-      const parsed = JSON.parse(content);
-      
-      // Handle array format: [{"type":"text","text":"content"}]
-      if (Array.isArray(parsed) && parsed[0]?.type === 'text' && 'text' in parsed[0]) {
-        // Remove "Output: " prefix if present
-        let text = parsed[0].text;
-        if (text.startsWith('Output: ')) {
-          text = text.substring(8);
-        }
-        // Remove extra quotes if present
-        if (text.startsWith('"') && text.endsWith('"')) {
-          text = text.substring(1, text.length - 1);
-        }
-        return text;
-      } 
-      // Handle single object format: {"type":"text","text":"content"}
-      else if (parsed?.type === 'text' && 'text' in parsed) {
-        // Remove "Output: " prefix if present
-        let text = parsed.text;
-        if (text.startsWith('Output: ')) {
-          text = text.substring(8);
-        }
-        // Remove extra quotes if present
-        if (text.startsWith('"') && text.endsWith('"')) {
-          text = text.substring(1, text.length - 1);
-        }
-        return text;
-      }
-    }
-    
-    // Handle plain text with "Output:" prefix
-    if (content.startsWith('Output: ')) {
-      return content.substring(8);
-    }
-    
-    // Return content as-is if no special handling needed
-    return content;
-  } catch (e) {
-    console.warn('Error parsing message content:', e);
-    return content;
-  }
 };

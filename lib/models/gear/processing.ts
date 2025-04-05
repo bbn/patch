@@ -63,7 +63,7 @@ export async function processWithLLM(gear: Gear, input?: GearInput): Promise<Gea
     // Browser environment - use the API endpoint
     console.log(`Calling LLM API for gear ${gear.id}`);
     
-    // Construct messages for the chat
+    // Construct messages for the direct prompt
     const messages = [
       {
         role: "system",
@@ -75,100 +75,44 @@ export async function processWithLLM(gear: Gear, input?: GearInput): Promise<Gea
       }
     ];
     
-    // For processing examples, use direct API call (not chat endpoint)
-    if (input !== undefined) {
-      console.log(`Processing input directly for gear ${gear.id}`);
-      try {
-        const response = await fetch(`/api/gears/${gear.id}`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ 
-            message: input,
-            source: 'example'
-          })
-        });
-        
-        if (!response.ok) {
-          const text = await response.text();
-          console.error(`API error: ${response.status} ${text}`);
-          throw new Error(`Failed to process input: ${response.status} ${text}`);
-        }
-        
-        try {
-          const text = await response.text();
-          console.log("Raw API response:", text.substring(0, 100) + "...");
-          
-          try {
-            const result = JSON.parse(text);
-            return result.output || text;
-          } catch (jsonError) {
-            console.warn("Failed to parse JSON response from API, using raw text:", jsonError);
-            return text;
-          }
-        } catch (textError) {
-          console.error("Error reading API response text:", textError);
-          return "Error reading API response";
-        }
-      } catch (error) {
-        console.error("Error in direct API call:", error);
-        throw error;
-      }
-    }
-    
-    // For chat interactions and other processing without specific input, use chat endpoint
-    const controller = new AbortController();
-    const signal = controller.signal;
-    
+    // Direct API call using the main gear endpoint
+    console.log(`Processing input directly for gear ${gear.id}`);
     try {
-      console.log(`Sending request to /api/gears/${gear.id}/chat`);
-      const response = await fetch(`/api/gears/${gear.id}/chat`, {
+      const response = await fetch(`/api/gears/${gear.id}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ messages }),
-        signal
+        body: JSON.stringify({ 
+          message: input,
+          source: input !== undefined ? 'example' : 'direct'
+        })
       });
       
       if (!response.ok) {
         const text = await response.text();
-        console.error(`LLM API error: ${response.status} ${text}`);
-        throw new Error(`Failed to process with LLM: ${response.status} ${text}`);
+        console.error(`API error: ${response.status} ${text}`);
+        throw new Error(`Failed to process input: ${response.status} ${text}`);
       }
-      
-      // Regular JSON response
-      console.log("Got regular JSON response");
       
       try {
         const text = await response.text();
-        console.log("Raw response:", text.substring(0, 100) + "...");
+        console.log("Raw API response:", text.substring(0, 100) + "...");
         
         try {
           const result = JSON.parse(text);
-          
-          if (!result.text && !result.content && !result.response) {
-            console.warn("Received potentially empty content from LLM response");
-            // Return the raw text if we can't find content or text fields
-            return text;
-          }
-          
-          return result.text || result.content || result.response || text;
+          return result.output || text;
         } catch (jsonError) {
-          console.warn("Failed to parse JSON response, using raw text:", jsonError);
-          return text; // Use raw text if JSON parsing fails
+          console.warn("Failed to parse JSON response from API, using raw text:", jsonError);
+          return text;
         }
       } catch (textError) {
-        console.error("Error getting response text:", textError);
-        return "Error reading response";
+        console.error("Error reading API response text:", textError);
+        return "Error reading API response";
       }
     } catch (error) {
-      console.error("Error in LLM API call:", error);
+      console.error("Error in direct API call:", error);
       throw error;
-    } finally {
-      // Clean up the controller
-      controller.abort();
     }
   } catch (error) {
     console.error("Error processing with LLM:", error);

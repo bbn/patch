@@ -6,6 +6,8 @@ import { db as firestoreDb } from '../../firebase';
 // Get the appropriate database implementation based on environment
 const database: Database = getDatabase();
 
+// Note: We still import GearChat for backward compatibility
+// but we're reducing reliance on it
 import { GearChat } from "../GearChat";
 import { Message, Role, GearInput, GearOutput } from "../types";
 import { debugLog, isDebugLoggingEnabled } from "../../utils";
@@ -17,6 +19,7 @@ import { logInfo, logError, logWarning, logDebug } from "../../logger";
 export class Gear {
   // Changed to protected to allow access from subclasses but not directly from outside
   protected _data: GearData;
+  // Keep chat for backward compatibility but reduce its usage
   private chat: GearChat;
   private unsubscribe: (() => void) | null = null;
   
@@ -50,6 +53,7 @@ export class Gear {
       position: data.position,
       isProcessing: data.isProcessing || false,
     };
+    // Maintain chat reference for backward compatibility
     this.chat = new GearChat(this._data.messages, this._data.id);
   }
 
@@ -143,7 +147,7 @@ export class Gear {
         const updatedData = docSnap.data() as GearData;
         // Update the internal data
         this._data = updatedData;
-        // Recreate chat instance with updated messages
+        // Recreate chat instance with updated messages for backward compatibility
         this.chat = new GearChat(this._data.messages, this._data.id);
         // Notify the callback
         callback(this);
@@ -257,6 +261,40 @@ export class Gear {
   }
   get messages() {
     return this._data.messages;
+  }
+  
+  // Update system message for direct prompt handling
+  async updateSystemMessage(content: string, skipSave = false) {
+    if (!this._data.messages || this._data.messages.length === 0) {
+      // Create a new system message
+      this._data.messages = [
+        {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content
+        }
+      ];
+    } else {
+      // Find and update existing system message
+      const systemIndex = this._data.messages.findIndex(m => m.role === 'system');
+      if (systemIndex >= 0) {
+        this._data.messages[systemIndex].content = content;
+      } else {
+        // Add system message if none exists
+        this._data.messages.unshift({
+          id: crypto.randomUUID(),
+          role: 'system',
+          content
+        });
+      }
+    }
+    
+    // Update chat reference for backward compatibility
+    this.chat = new GearChat(this._data.messages, this._data.id);
+    
+    if (!skipSave) {
+      await this.save();
+    }
   }
   
   async setMessages(messages: Message[], skipSave = false) {
@@ -415,7 +453,7 @@ export class Gear {
     }
   }
 
-  // Process methods
+  // Process methods - Simplified to focus on direct prompt processing
   async process(input?: GearInput) {
     try {
       let output;
@@ -423,6 +461,9 @@ export class Gear {
       // Add more detailed logging
       console.log(`Process called for gear ${this.id}`);
       console.log(`Input type: ${input !== undefined ? typeof input : 'undefined (using all inputs)'}`);
+      
+      // Set the processing flag to true
+      await this.setIsProcessing(true, true); // Skip individual save
       
       if (input !== undefined) {
         // For backward compatibility, if input is provided directly,
@@ -439,6 +480,9 @@ export class Gear {
         }
         
         this._data.output = output;
+        
+        // Set the processing flag to false
+        this._data.isProcessing = false;
         await this.save();
         
         console.log(`Saved gear with new output`);
@@ -458,22 +502,31 @@ export class Gear {
       }
       
       this._data.output = output;
+      
+      // Set the processing flag to false
+      this._data.isProcessing = false;
       await this.save();
       
       console.log(`Saved gear with new output`);
       return output;
     } catch (error) {
       console.error(`Error processing: ${error}`);
+      // Make sure processing flag is set to false in case of errors
+      this._data.isProcessing = false;
+      await this.save();
       throw error;
     }
   }
 
   // Helper methods
   systemPrompt(): string {
-    const basePrompt = `You are interacting with a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears. The processing instructions are communicated to the gear via chat messages.
+    // Get the system message directly
+    const systemMessage = this._data.messages.find(m => m.role === 'system');
+    const systemContent = systemMessage ? systemMessage.content : '';
+    
+    const basePrompt = `You are a Gear in a distributed message processing system. A Gear is a modular component that processes messages and produces outputs that can be consumed by other Gears.
 
-    Here are this Gear's instructional messages:
-    ${JSON.stringify(this._data.messages, null, 2)}
+    ${systemContent}
 
     Please process the input data and generate an output according to the instruction.`;
 
@@ -553,23 +606,25 @@ export class Gear {
     }
   }
 
+  // Simplified version for backward compatibility
   async addMessage({ role, content }: { role: Role; content: string }) {
     console.log(`Gear.addMessage: Adding ${role} message to gear ${this._data.id}`);
     
     try {
-      // Add message to chat object
+      // Add message to chat object for backward compatibility
       await this.chat.addMessage({ role, content });
       console.log(`Gear.addMessage: Message added to chat, saving to data store`);
-      
-      // Note: we don't need to push to data.messages since the GearChat maintains the same reference
-      // But let's log what we're going to save
-      console.log(`Gear.addMessage: Current messages array length: ${this._data.messages.length}`);
-      console.log(`Gear.addMessage: Last message role: ${this._data.messages[this._data.messages.length-1]?.role || 'none'}`);
       
       // Save to persistent storage
       try {
         await this.save();
         console.log(`Gear.addMessage: Successfully saved gear data with new message`);
+        
+        // If we're changing a system message, consider updating the label
+        if (role === 'system') {
+          await this.generateLabel();
+          await this.updateContainingPatchDescriptions();
+        }
       } catch (saveError) {
         console.error(`Gear.addMessage: Error saving gear after adding message:`, saveError);
         throw saveError;
@@ -577,48 +632,6 @@ export class Gear {
     } catch (error) {
       console.error(`Gear.addMessage: Unexpected error adding message:`, error);
       throw error;
-    }
-
-    // Generate a new label if this completes a message exchange (user then assistant)
-    if (role === 'assistant' && this._data.messages.length >= 2) {
-      debugLog("LABEL", `Detected assistant message following other messages`);
-      const previousMessage = this._data.messages[this._data.messages.length - 2];
-      debugLog("LABEL", `Previous message role: ${previousMessage.role}`);
-      
-      if (previousMessage.role === 'user') {
-        console.log(`Generating label for gear ${this.id} after message exchange`);
-        debugLog("LABEL", `Found message exchange pattern (user→assistant), calling generateLabel()`);
-        const newLabel = await this.generateLabel();
-        debugLog("LABEL", `generateLabel() returned: "${newLabel}"`);
-        
-        // Update descriptions of patches that contain this gear
-        await this.updateContainingPatchDescriptions();
-        
-        // Only run verification checks in debug mode
-        if (isDebugLoggingEnabled()) {
-          // Log current gear state after label generation
-          debugLog("LABEL", `After label generation, gear label = "${this._data.label}"`);
-          
-          // Get the saved gear to make sure the label was persisted
-          if (typeof window !== 'undefined') {
-            try {
-              const checkResponse = await fetch(`/api/gears/${this._data.id}`);
-              if (checkResponse.ok) {
-                const serverGear = await checkResponse.json();
-                debugLog("LABEL", `Server gear label after save: "${serverGear.label}"`);
-              }
-            } catch (err) {
-              console.warn("Error checking server gear label:", err);
-            }
-          }
-        }
-      }
-    }
-    
-    // If role is "system" or "user" and we have example inputs, process them all when instructions change
-    if ((role === "system" || role === "user") && this._data.exampleInputs && this._data.exampleInputs.length > 0) {
-      // Process all examples with the updated instructions
-      await this.processAllExamples();
     }
   }
 
@@ -863,21 +876,27 @@ export class Gear {
     }
   }
 
+  // Simplified label generation that doesn't rely on chat history
   async generateLabel(): Promise<string> {
     try {
       console.log(`Generating label for gear ${this.id}`);
-      debugLog("LABEL", `Current messages for label generation:`, this._data.messages);
       
-      // Generate a concise label based on the gear's messages
-      const prompt = `Based on this conversation, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
+      // Get the system message
+      const systemMessage = this._data.messages.find(m => m.role === 'system');
+      if (!systemMessage || !systemMessage.content) {
+        return this.label; // Return existing label if no system message
+      }
+      
+      // Generate a concise label based on the gear's system message
+      const prompt = `Based on this system prompt, generate a concise 1-3 word label that describes what transformation this gear performs. The label should be short and descriptive like "french translator" or "slack conversation summarizer". Only respond with the label text, nothing else.
 
-Example conversations and labels:
-- Conversation about translating text to French → "French Translator"
-- Conversation about summarizing Slack messages → "Slack Summarizer"
-- Conversation about extracting key information from emails → "Email Extractor"
+Example system prompts and labels:
+- "You are a translator that translates text to French..." → "French Translator"
+- "You summarize Slack messages..." → "Slack Summarizer"
+- "You extract key information from emails..." → "Email Extractor"
 
-Here is the conversation:
-${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
+System prompt:
+${systemMessage.content}
 `;
 
       debugLog("LABEL", `Sending prompt for label generation: ${prompt.substring(0, 200)}...`);
@@ -930,6 +949,52 @@ ${this._data.messages.map(m => `${m.role}: ${m.content}`).join('\n')}
     } catch (error) {
       console.error("Error generating label:", error);
       return this.label; // Return existing label if generation fails
+    }
+  }
+  
+  // New method for direct prompt processing
+  async submitPrompt(prompt: string): Promise<string> {
+    try {
+      console.log(`Processing direct prompt for gear ${this.id}`);
+      
+      // Set the processing flag to true
+      await this.setIsProcessing(true, true); // Skip save to combine with later save
+      
+      // Now process the input and get output
+      const output = await processWithLLM(this, prompt);
+      
+      // Store the output
+      this._data.output = output;
+      
+      // Set processing flag to false and save
+      this._data.isProcessing = false;
+      await this.save();
+      
+      // Create log entry for this prompt
+      // We could move this to the route handler, but keeping it here
+      // allows for consistent logging across different processing methods
+      const logEntry: GearLogEntry = {
+        timestamp: Date.now(),
+        input: prompt,
+        output,
+        source: 'direct',
+      };
+      
+      // Add to beginning of log array
+      const updatedLog = [logEntry, ...this.log].slice(0, 50); // Keep only 50 entries
+      await this.setLog(updatedLog);
+      
+      console.log(`Processed prompt successfully for gear ${this.id}`);
+      
+      return typeof output === 'string' ? output : JSON.stringify(output);
+    } catch (error) {
+      console.error(`Error processing prompt for gear ${this.id}:`, error);
+      
+      // Make sure to set processing to false on error
+      this._data.isProcessing = false;
+      await this.save();
+      
+      throw error;
     }
   }
 }

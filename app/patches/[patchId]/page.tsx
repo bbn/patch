@@ -1506,6 +1506,16 @@ export default function PatchPage() {
               onProcessAllExamples={handleProcessAllExamples}
               onSendOutput={handleSendOutput}
               onClearLog={handleClearLog}
+              onSubmitPrompt={async (prompt) => {
+                if (!selectedGear) return;
+                try {
+                  await selectedGear.submitPrompt(prompt);
+                  // Real-time updates will handle the rest via Firestore subscription
+                } catch (error) {
+                  console.error("Error submitting prompt:", error);
+                  throw error;
+                }
+              }}
             />
           </div>
         </div>
