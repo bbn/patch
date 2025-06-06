@@ -354,32 +354,22 @@ export async function publishToBlob(
 }
 ```
 
-## Backward Compatibility & Migration
+## Implementation Strategy
 
-**Existing Patch Loading:**
-- Current gear-only patches load normally; no breaking changes to `Gear` or `Patch` classes
-- New `nodeType` field defaults to `'gear'` for existing nodes
-- ReactFlow component registry extended with new node renderers
+**Clean Slate Approach:**
+Since Patch has no production users yet, we can implement breaking changes without 
+migration concerns. This allows for optimal architecture decisions without legacy constraints.
 
-**Default Fallbacks:**
-```typescript
-// Migration utility for existing patches
-export function migratePatchToV2(patch: Patch): Patch {
-  return {
-    ...patch,
-    nodes: patch.nodes.map(node => ({
-      ...node,
-      type: node.type || 'gear',  // Default to gear for existing nodes
-    })),
-    version: 2,
-  };
-}
-```
+**Database Schema Updates:**
+- Add `type: 'gear' | 'inlet' | 'outlet'` field to all `PatchNode` documents
+- Extend `Patch` documents with new node type support
+- Update Firestore security rules for new node types
+- No migration utilities needed - fresh data model implementation
 
-**Database Schema Evolution:**
-- Add optional `inlets` and `outlets` arrays to `Patch` documents
-- Existing documents continue working; new fields populate on first edit
-- Firestore rules updated to allow new node types
+**ReactFlow Integration:**
+- Replace existing gear-only node registry with multi-type node system
+- Implement new visual components for inlet and outlet nodes
+- Update connection validation logic for cross-node-type edges
 
 ## Security & Rate-limiting
 
