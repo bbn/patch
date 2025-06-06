@@ -7,6 +7,7 @@ const database: Database = getDatabase();
 
 import { PatchData, PatchNode, PatchEdge } from './types';
 import { Gear } from '../gear';
+import { logInfo, logError, logWarning, logDebug } from '@/lib/logger';
 
 export class Patch {
   private data: PatchData;
@@ -14,10 +15,16 @@ export class Patch {
 
   constructor(data: Partial<PatchData> & { id: string; name: string }) {
     // Add diagnostic logging to understand what methods are available
-    console.log("Patch constructor called, available methods:", 
-      Object.getOwnPropertyNames(Object.getPrototypeOf(this)));
-    console.log("Patch arrow functions:", 
-      Object.keys(this).filter(key => typeof (this as any)[key] === 'function'));
+    logDebug(
+      "Patch",
+      "Patch constructor called, available methods:",
+      Object.getOwnPropertyNames(Object.getPrototypeOf(this))
+    );
+    logDebug(
+      "Patch",
+      "Patch arrow functions:",
+      Object.keys(this).filter(key => typeof (this as any)[key] === 'function')
+    );
     
     this.data = {
       id: data.id,
@@ -51,7 +58,7 @@ export class Patch {
       }
       return null;
     } catch (error) {
-      console.error(`Error fetching patch ${id}:`, error);
+      logError("Patch", `Error fetching patch ${id}:`, error);
       return null;
     }
   }
@@ -81,7 +88,7 @@ export class Patch {
   // This should be called on client-side only
   subscribeToUpdates(callback: (patch: Patch) => void): () => void {
     if (typeof window === 'undefined') {
-      console.warn('subscribeToUpdates should only be called on the client side');
+      logWarning('Patch', 'subscribeToUpdates should only be called on the client side');
       return () => {};
     }
 
@@ -101,7 +108,7 @@ export class Patch {
         callback(this);
       }
     }, (error) => {
-      console.error(`Error in real-time updates for patch ${this.data.id}:`, error);
+      logError('Patch', `Error in real-time updates for patch ${this.data.id}:`, error);
     });
 
     // Return the unsubscribe function
@@ -119,7 +126,7 @@ export class Patch {
     try {
       await database.savePatch(this.data.id, this.data);
     } catch (error) {
-      console.error(`Error saving patch ${this.data.id}:`, error);
+      logError('Patch', `Error saving patch ${this.data.id}:`, error);
     }
   }
 
@@ -222,14 +229,14 @@ export class Patch {
 
   // Edge management methods
   addEdge = async (edge: PatchEdge): Promise<void> => {
-    console.log(`Adding edge from ${edge.source} to ${edge.target}`);
+    logInfo('Patch', `Adding edge from ${edge.source} to ${edge.target}`);
     
     // Check if edge already exists to avoid duplicates
     const edgeExists = this.data.edges.some(e => 
       e.source === edge.source && e.target === edge.target);
       
     if (edgeExists) {
-      console.log(`Edge already exists from ${edge.source} to ${edge.target}, skipping`);
+      logInfo('Patch', `Edge already exists from ${edge.source} to ${edge.target}, skipping`);
       return;
     }
     
@@ -281,12 +288,12 @@ export class Patch {
               needsDescriptionUpdate = true;
             }
           } catch (error) {
-            console.error("Error updating gear connections via API:", error);
+            logError('Patch', 'Error updating gear connections via API', error);
           }
         }
       }
     } catch (error) {
-      console.error("Error updating gear connections:", error);
+      logError('Patch', 'Error updating gear connections', error);
     }
     
     // Save the patch
@@ -300,11 +307,11 @@ export class Patch {
   }
 
   updateEdge = async (id: string, updates: Partial<PatchEdge>): Promise<boolean> => {
-    console.log(`Updating edge ${id}`);
+    logInfo('Patch', `Updating edge ${id}`);
     
     const edgeIndex = this.data.edges.findIndex(edge => edge.id === id);
     if (edgeIndex === -1) {
-      console.log(`Edge ${id} not found`);
+      logInfo('Patch', `Edge ${id} not found`);
       return false;
     }
     
@@ -335,7 +342,10 @@ export class Patch {
     
     if (oldEdge.source !== newSourceId || oldEdge.target !== newTargetId) {
       connectionsChanged = true;
-      console.log(`Edge connections are changing from ${oldEdge.source}->${oldEdge.target} to ${newSourceId}->${newTargetId}`);
+      logInfo(
+        'Patch',
+        `Edge connections are changing from ${oldEdge.source}->${oldEdge.target} to ${newSourceId}->${newTargetId}`
+      );
       
       try {
         // Process old connection
@@ -372,7 +382,7 @@ export class Patch {
           }
         }
       } catch (error) {
-        console.error("Error updating gear connections:", error);
+        logError('Patch', 'Error updating gear connections', error);
       }
     }
     
@@ -411,7 +421,7 @@ export class Patch {
     this.data.edges = this.data.edges.filter(edge => edge.id !== id);
     
     if (this.data.edges.length >= initialLength) {
-      console.log(`No edge with ID ${id} found in patch ${this.id}`);
+      logInfo('Patch', `No edge with ID ${id} found in patch ${this.id}`);
       return false;
     }
     
@@ -423,7 +433,7 @@ export class Patch {
       if (sourceNode && targetNode) {
         const sourceGear = await Gear.findById(sourceNode.data.gearId);
         if (sourceGear) {
-          console.log(`Updating source gear ${sourceGear.id} to remove connection`);
+          logInfo('Patch', `Updating source gear ${sourceGear.id} to remove connection`);
           
           // Start batch update to avoid individual saves
           sourceGear.startBatchUpdate();
@@ -434,14 +444,14 @@ export class Patch {
           
           if (urlWasRemoved) {
             // Only generate new description if connection was actually removed
-            console.log(`Connection removed from ${sourceGear.id} to ${targetNode.data.gearId}`);
+            logInfo('Patch', `Connection removed from ${sourceGear.id} to ${targetNode.data.gearId}`);
             
             // Complete batch update with a single save
             await sourceGear.completeBatchUpdate(true);
           } else {
             // If URL wasn't found, just cancel the batch
             sourceGear.skipDescriptionUpdates = false;
-            console.log(`No connection found from ${sourceGear.id} to ${targetNode.data.gearId}`);
+            logInfo('Patch', `No connection found from ${sourceGear.id} to ${targetNode.data.gearId}`);
           }
         }
       }
@@ -457,7 +467,7 @@ export class Patch {
       
       return true;
     } catch (error) {
-      console.error(`Error removing edge ${id}:`, error);
+      logError('Patch', `Error removing edge ${id}:`, error);
       // Still save the edge change even if gear update failed
       await this.save();
       return true;
@@ -512,7 +522,7 @@ export class Patch {
             }
           }
         } catch (error) {
-          console.error("Error removing gear connection:", error);
+          logError('Patch', 'Error removing gear connection', error);
         }
       }
     }
@@ -540,7 +550,7 @@ export class Patch {
             }
           }
         } catch (error) {
-          console.error("Error adding gear connection:", error);
+          logError('Patch', 'Error adding gear connection', error);
         }
       }
     }
@@ -576,11 +586,11 @@ export class Patch {
    */
   async generateDescription(skipSave = false): Promise<string> {
     try {
-      console.log(`Generating description for patch ${this.id}`);
+      logInfo('Patch', `Generating description for patch ${this.id}`);
       
       // Only generate description if we have gears and connections 
       if (this.nodes.length === 0) {
-        console.log(`Skipping description generation for empty patch ${this.id}`);
+        logInfo('Patch', `Skipping description generation for empty patch ${this.id}`);
         return this.description;
       }
       
@@ -589,14 +599,14 @@ export class Patch {
         node.data.label.startsWith("Gear "));
         
       if (hasOnlyDefaultGears && this.edges.length === 0 && this.description) {
-        console.log(`Skipping description generation for patch ${this.id} with only default gears`);
+        logInfo('Patch', `Skipping description generation for patch ${this.id} with only default gears`);
         return this.description;
       }
       
       // Always make the API call if client-side
       if (typeof window !== 'undefined') {
         try {
-          console.log(`Calling description API for patch ${this.id}`);
+          logInfo('Patch', `Calling description API for patch ${this.id}`);
           // Use the dedicated endpoint for patch descriptions
           const response = await fetch(`/api/patches/${this.id}/description`, {
             method: "POST",
@@ -604,7 +614,7 @@ export class Patch {
           });
           
           if (!response.ok) {
-            console.error(`Error generating description: ${response.status}`);
+            logError('Patch', `Error generating description: ${response.status}`);
             return this.description; // Keep existing description if API fails
           }
           
@@ -617,7 +627,7 @@ export class Patch {
             .trim()
             .substring(0, 120); // Enforce character limit
           
-          console.log(`Generated description: "${cleanedDescription}"`);
+          logInfo('Patch', `Generated description: "${cleanedDescription}"`);
           this.data.description = cleanedDescription;
           
           // Only save if not skipped
@@ -628,7 +638,7 @@ export class Patch {
           return cleanedDescription;
         } catch (error) {
           // Catch network errors specifically in the fetch call
-          console.error(`Network error when generating description for patch ${this.id}:`, error);
+          logError('Patch', `Network error when generating description for patch ${this.id}:`, error);
           // Don't let the fetch error propagate to calling methods like addNode
           return this.description;
         }
@@ -636,7 +646,7 @@ export class Patch {
       
       return this.description; // Return existing description if server-side
     } catch (error) {
-      console.error("Error generating patch description:", error);
+      logError('Patch', 'Error generating patch description', error);
       return this.description;
     }
   }
