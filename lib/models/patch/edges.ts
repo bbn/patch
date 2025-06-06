@@ -1,19 +1,20 @@
 import { Patch } from './Patch';
 import { PatchEdge } from './types';
 import { Gear } from '../gear';
+import { logInfo, logError } from '@/lib/logger';
 
 /**
  * Add an edge to a patch
  */
 export async function addEdge(patch: Patch, edge: PatchEdge): Promise<void> {
-  console.log(`Adding edge from ${edge.source} to ${edge.target}`);
+  logInfo("PatchEdges", `Adding edge from ${edge.source} to ${edge.target}`);
   
   // Check if edge already exists to avoid duplicates
   const edgeExists = patch.edges.some(e => 
     e.source === edge.source && e.target === edge.target);
     
   if (edgeExists) {
-    console.log(`Edge already exists from ${edge.source} to ${edge.target}, skipping`);
+    logInfo("PatchEdges", `Edge already exists from ${edge.source} to ${edge.target}, skipping`);
     return;
   }
   
@@ -65,12 +66,12 @@ export async function addEdge(patch: Patch, edge: PatchEdge): Promise<void> {
             needsDescriptionUpdate = true;
           }
         } catch (error) {
-          console.error("Error updating gear connections via API:", error);
+          logError("PatchEdges", "Error updating gear connections via API", error);
         }
       }
     }
   } catch (error) {
-    console.error("Error updating gear connections:", error);
+    logError("PatchEdges", "Error updating gear connections", error);
   }
   
   // Save the patch
@@ -87,11 +88,11 @@ export async function addEdge(patch: Patch, edge: PatchEdge): Promise<void> {
  * Update an edge in a patch
  */
 export async function updateEdge(patch: Patch, id: string, updates: Partial<PatchEdge>): Promise<boolean> {
-  console.log(`Updating edge ${id}`);
+  logInfo("PatchEdges", `Updating edge ${id}`);
   
   const edgeIndex = patch.edges.findIndex(edge => edge.id === id);
   if (edgeIndex === -1) {
-    console.log(`Edge ${id} not found`);
+    logInfo("PatchEdges", `Edge ${id} not found`);
     return false;
   }
   
@@ -122,7 +123,10 @@ export async function updateEdge(patch: Patch, id: string, updates: Partial<Patc
   
   if (oldEdge.source !== newSourceId || oldEdge.target !== newTargetId) {
     connectionsChanged = true;
-    console.log(`Edge connections are changing from ${oldEdge.source}->${oldEdge.target} to ${newSourceId}->${newTargetId}`);
+    logInfo(
+      "PatchEdges",
+      `Edge connections are changing from ${oldEdge.source}->${oldEdge.target} to ${newSourceId}->${newTargetId}`
+    );
     
     try {
       // Process old connection
@@ -159,7 +163,7 @@ export async function updateEdge(patch: Patch, id: string, updates: Partial<Patc
         }
       }
     } catch (error) {
-      console.error("Error updating gear connections:", error);
+      logError("PatchEdges", "Error updating gear connections", error);
     }
   }
   
