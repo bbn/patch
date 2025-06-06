@@ -3,6 +3,7 @@ import { PatchDefinition } from '../../types/Patch';
 import { Node } from '../../types/Node';
 import { topoSort } from './topoSort';
 import { localFns } from './localFns';
+import { validateHttpUrl, createTimeoutController } from './security';
 
 export type PatchEvent =
   | { type: 'RunStart'; runId: string; ts: number }
@@ -70,22 +71,46 @@ export async function* runPatch(
     try {
       let output: unknown;
       if (node.kind === 'http') {
+        // Validate URL for security (SSRF protection)
+        validateHttpUrl(node.url);
+        
+        // Create timeout controller (30 second default)
+        const controller = createTimeoutController(30000);
+        
         try {
-          const url = new URL(node.url);
-          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-            throw new Error('URL must use http or https');
+          const res = await fetch(node.url, {
+            method: 'POST',
+            body: JSON.stringify(input),
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
+          });
+          
+          // Check HTTP response status
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
           }
-        } catch {
-          throw new Error(`Invalid URL: ${node.url}`);
+          
+          output = await res.json();
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            throw new Error('HTTP request timed out after 30 seconds');
+          }
+          throw err; // Re-throw original error
         }
-        const res = await fetch(node.url, {
-          method: 'POST',
-          body: JSON.stringify(input),
-        });
-        output = await res.json();
       } else if (node.kind === 'local') {
+        // Validate that function name is provided
+        if (!node.fn) {
+          throw new Error('Local node missing function name');
+        }
+        
         const fn = localFns[node.fn];
-        if (!fn) throw new Error(`Local function not found: ${node.fn}`);
+        if (!fn) {
+          throw new Error(`Local function not found: ${node.fn}`);
+        }
+        
         output = await fn(input);
       } else {
         const unknownKind = (node as { kind?: unknown }).kind;
