@@ -6,32 +6,57 @@ import { localFns } from './localFns';
 
 export type PatchEvent =
   | { type: 'RunStart'; runId: string; ts: number }
-  | { type: 'NodeStart'; nodeId: string; ts: number; input: any }
-  | { type: 'NodeSuccess'; nodeId: string; ts: number; output: any }
-  | { type: 'NodeError'; nodeId: string; ts: number; error: string }
+  | { type: 'NodeStart'; nodeId: string; ts: number; input: unknown }
+  | {
+      type: 'NodeSuccess';
+      nodeId: string;
+      ts: number;
+      output: unknown;
+    }
+  | {
+      type: 'NodeError';
+      nodeId: string;
+      ts: number;
+      error: { message: string; stack?: string };
+    }
   | { type: 'RunComplete'; runId: string; ts: number };
 
 export async function* runPatch(
   patch: PatchDefinition,
-  initialInput: any
+  initialInput: unknown
 ): AsyncGenerator<PatchEvent> {
   const runId = randomUUID();
   yield { type: 'RunStart', runId, ts: Date.now() } as PatchEvent;
 
+  if (!Array.isArray(patch.nodes) || !Array.isArray(patch.edges)) {
+    throw new Error('Invalid patch definition');
+  }
+
   const nodeMap = new Map<string, Node>();
-  for (const node of patch.nodes) nodeMap.set(node.id, node);
+  for (const node of patch.nodes) {
+    if (nodeMap.has(node.id)) {
+      throw new Error(`Duplicate node id: ${node.id}`);
+    }
+    nodeMap.set(node.id, node);
+  }
+
+  for (const edge of patch.edges) {
+    if (!nodeMap.has(edge.source) || !nodeMap.has(edge.target)) {
+      throw new Error(`Edge references unknown node: ${edge.source} -> ${edge.target}`);
+    }
+  }
 
   const order = topoSort(
     patch.nodes.map(n => n.id),
     patch.edges
   );
 
-  const outputs = new Map<string, any>();
+  const outputs = new Map<string, unknown>();
 
   for (const nodeId of order) {
     const node = nodeMap.get(nodeId)!;
     const incoming = patch.edges.filter(e => e.target === nodeId);
-    let input: any;
+    let input: unknown;
     if (incoming.length === 0) {
       input = initialInput;
     } else if (incoming.length === 1) {
@@ -43,9 +68,14 @@ export async function* runPatch(
     yield { type: 'NodeStart', nodeId, ts: Date.now(), input } as PatchEvent;
 
     try {
-      let output: any;
+      let output: unknown;
       if (node.kind === 'http') {
-        const res = await fetch(node.url!, {
+        try {
+          new URL(node.url);
+        } catch {
+          throw new Error(`Invalid URL: ${node.url}`);
+        }
+        const res = await fetch(node.url, {
           method: 'POST',
           body: JSON.stringify(input),
         });
@@ -55,16 +85,18 @@ export async function* runPatch(
         if (!fn) throw new Error(`Local function not found: ${node.fn}`);
         output = await fn(input);
       } else {
-        throw new Error(`Unknown node kind: ${(node as any).kind}`);
+        throw new Error(`Unknown node kind: ${(node as { kind?: string }).kind}`);
       }
       outputs.set(nodeId, output);
       yield { type: 'NodeSuccess', nodeId, ts: Date.now(), output } as PatchEvent;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorObj =
+        err instanceof Error ? { message: err.message, stack: err.stack } : { message: String(err) };
       yield {
         type: 'NodeError',
         nodeId,
         ts: Date.now(),
-        error: String(err),
+        error: errorObj,
       } as PatchEvent;
       yield { type: 'RunComplete', runId, ts: Date.now() } as PatchEvent;
       return;

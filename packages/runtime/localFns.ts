@@ -1,5 +1,8 @@
-export const localFns: Record<string, (input: any) => any | Promise<any>> = {};
+export const localFns: Record<string, (input: unknown) => unknown | Promise<unknown>> = {};
 
-export function registerLocalFn(name: string, fn: (input: any) => any | Promise<any>): void {
-  localFns[name] = fn;
+export function registerLocalFn<Input = unknown, Output = unknown>(
+  name: string,
+  fn: (input: Input) => Output | Promise<Output>
+): void {
+  localFns[name] = fn as (input: unknown) => unknown | Promise<unknown>;
 }
