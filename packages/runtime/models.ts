@@ -55,10 +55,10 @@ export interface GearTemplate {
   description?: string;
   /** Markdown documentation */
   docsMarkdown?: string;
-  /** Zod schema defining configuration shape */
-  configSchema: z.ZodTypeAny;
+  /** Configuration schema as JSON schema or serialized Zod schema */
+  configSchema: Record<string, unknown>;
   /** Default configuration object */
-  defaultConfig: unknown;
+  defaultConfig: Record<string, unknown>;
   /** Input port definitions */
   inputPorts: GearPort[];
   /** Output port definitions */
@@ -84,7 +84,7 @@ export interface GearInstance {
   /** Optional custom name */
   name?: string;
   /** User provided configuration overrides */
-  config?: unknown;
+  config?: Record<string, unknown>;
   /** Optional logging settings */
   loggingOptions?: LoggingOptions;
 }
@@ -106,8 +106,14 @@ export interface PatchRun {
   startedAt: number;
   /** Duration in milliseconds */
   duration: number;
-  /** Arbitrary cost summary */
-  costSummary?: unknown;
+  /** Cost summary with token usage and pricing */
+  costSummary?: {
+    totalTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalCost?: number;
+    currency?: string;
+  };
 }
 
 /**
@@ -143,8 +149,8 @@ export const GearPortSchema = z.object({
 });
 
 export const GearTestCaseSchema = z.object({
-  input: z.any(),
-  expectedOutput: z.any(),
+  input: z.unknown(),
+  expectedOutput: z.unknown(),
   notes: z.string().optional(),
 });
 
@@ -161,8 +167,8 @@ export const GearTemplateSchema = z.object({
   author: z.string(),
   description: z.string().optional(),
   docsMarkdown: z.string().optional(),
-  configSchema: z.any(),
-  defaultConfig: z.any(),
+  configSchema: z.record(z.unknown()),
+  defaultConfig: z.record(z.unknown()),
   inputPorts: z.array(GearPortSchema),
   outputPorts: z.array(GearPortSchema),
   defaultModel: z.string().optional(),
@@ -175,7 +181,7 @@ export const GearInstanceSchema = z.object({
   id: z.string(),
   templateId: z.string(),
   name: z.string().optional(),
-  config: z.any().optional(),
+  config: z.record(z.unknown()).optional(),
   loggingOptions: LoggingOptionsSchema.optional(),
 });
 
@@ -188,7 +194,13 @@ export const PatchRunSchema = z.object({
   status: z.union([z.literal('running'), z.literal('succeeded'), z.literal('failed')]),
   startedAt: z.number(),
   duration: z.number(),
-  costSummary: z.any().optional(),
+  costSummary: z.object({
+    totalTokens: z.number().optional(),
+    promptTokens: z.number().optional(),
+    completionTokens: z.number().optional(),
+    totalCost: z.number().optional(),
+    currency: z.string().optional(),
+  }).optional(),
 });
 
 export const PatchSchema = z.object({
@@ -202,3 +214,70 @@ export const PatchSchema = z.object({
   loggingOptions: LoggingOptionsSchema.optional(),
   runHistory: z.array(PatchRunSchema).optional(),
 });
+
+// ------------------- Validation Utilities -------------------
+
+/**
+ * Validates that a patch object conforms to the Patch schema.
+ */
+export function validatePatch(patch: unknown): patch is Patch {
+  return PatchSchema.safeParse(patch).success;
+}
+
+/**
+ * Validates that a gear template object conforms to the GearTemplate schema.
+ */
+export function validateGearTemplate(template: unknown): template is GearTemplate {
+  return GearTemplateSchema.safeParse(template).success;
+}
+
+/**
+ * Validates that a gear instance object conforms to the GearInstance schema.
+ */
+export function validateGearInstance(instance: unknown): instance is GearInstance {
+  return GearInstanceSchema.safeParse(instance).success;
+}
+
+/**
+ * Validates that a configuration object matches the expected structure.
+ * This is a basic validation - for full schema validation, use the template's configSchema.
+ */
+export function validateConfig(config: unknown): config is Record<string, unknown> {
+  return typeof config === 'object' && config !== null && !Array.isArray(config);
+}
+
+/**
+ * Validates that logging options conform to the LoggingOptions schema.
+ */
+export function validateLoggingOptions(options: unknown): options is LoggingOptions {
+  return LoggingOptionsSchema.safeParse(options).success;
+}
+
+/**
+ * Validates that a patch run object conforms to the PatchRun schema.
+ */
+export function validatePatchRun(run: unknown): run is PatchRun {
+  return PatchRunSchema.safeParse(run).success;
+}
+
+/**
+ * Validates and parses a patch, returning either the parsed patch or validation errors.
+ */
+export function parsePatch(data: unknown): { success: true; data: Patch } | { success: false; errors: z.ZodError } {
+  const result = PatchSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data as Patch };
+  }
+  return { success: false, errors: result.error };
+}
+
+/**
+ * Validates and parses a gear template, returning either the parsed template or validation errors.
+ */
+export function parseGearTemplate(data: unknown): { success: true; data: GearTemplate } | { success: false; errors: z.ZodError } {
+  const result = GearTemplateSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data as GearTemplate };
+  }
+  return { success: false, errors: result.error };
+}
