@@ -1,16 +1,16 @@
 # Patch Runtime Design: Inlets, Outlets & Event Streaming
 
 *Extends the visual graph builder with HTTP entrypoints (Inlets), side-effect actions (Outlets), 
-and a comprehensive streaming event system for real-time pipeline execution monitoring.*
+comprehensive runtime data models, and a streaming event system for real-time pipeline execution monitoring.*
 
 ## Overview
 
-This design introduces two new node types and a streaming runtime to transform Patch from a 
+This design introduces new node types, runtime data models, and a streaming runtime to transform Patch from a 
 standalone LLM processing tool into a deployable API service. **Inlet nodes** serve as HTTP 
 entrypoints that trigger patch execution, while **Outlet nodes** perform side effects like blob 
-storage, Slack notifications, or cache invalidation. The new **streaming event model** provides 
-real-time visibility into pipeline execution, enabling live monitoring, debugging, and cost 
-tracking across complex multi-node workflows.
+storage, Slack notifications, or cache invalidation. The **runtime data models** provide comprehensive 
+type safety and validation, while the **streaming event model** provides real-time visibility into 
+pipeline execution, enabling live monitoring, debugging, and cost tracking across complex multi-node workflows.
 
 ## Motivation & Goals
 
@@ -27,6 +27,102 @@ tracking across complex multi-node workflows.
 - Advanced workflow orchestration (conditional branching, loops)
 - Multi-tenant isolation (single workspace per deployment)
 - GraphQL or complex query interfaces
+
+## Runtime Data Models
+
+The Patch runtime uses a comprehensive type system with TypeScript interfaces and Zod validation schemas 
+to ensure type safety at both compile-time and runtime. These models provide the foundation for all 
+patch execution, validation, and monitoring.
+
+### Core Data Structures
+
+**GearTemplate** - Reusable template defining a gear's behavior:
+```typescript
+interface GearTemplate {
+  id: string;                              // Unique template identifier
+  name: string;                           // Template name
+  version: string;                        // Semantic version
+  author: string;                         // Template author
+  description?: string;                   // Short description
+  docsMarkdown?: string;                  // Markdown documentation
+  configSchema: Record<string, unknown>; // Configuration schema
+  defaultConfig: Record<string, unknown>; // Default configuration
+  inputPorts: GearPort[];                 // Input port definitions
+  outputPorts: GearPort[];                // Output port definitions
+  defaultModel?: string;                  // Default LLM model
+  mcpServers?: string[];                  // Allowed MCP server URLs
+  testCases?: GearTestCase[];             // Unit test cases
+  loggingOptions?: LoggingOptions;        // Logging configuration
+}
+```
+
+**GearInstance** - Instance of a template within a patch:
+```typescript
+interface GearInstance {
+  id: string;                              // Unique instance identifier
+  templateId: string;                      // Reference to template
+  name?: string;                          // Optional custom name
+  config?: Record<string, unknown>;       // Configuration overrides
+  loggingOptions?: LoggingOptions;         // Instance logging settings
+}
+```
+
+**Patch** - Complete patch definition with instances and connections:
+```typescript
+interface Patch {
+  id: string;                   // Patch identifier
+  name: string;                 // Patch name
+  description?: string;         // Optional description
+  nodes: GearInstance[];        // Gear instances
+  edges: PatchEdge[];          // Directed connections
+  inletIds: string[];          // Inlet node identifiers
+  outletIds: string[];         // Outlet node identifiers
+  loggingOptions?: LoggingOptions; // Patch-level logging
+  runHistory?: PatchRun[];     // Execution history
+}
+```
+
+**PatchRun** - Execution record with metrics:
+```typescript
+interface PatchRun {
+  status: 'running' | 'succeeded' | 'failed'; // Execution status
+  startedAt: number;                          // Start timestamp
+  duration: number;                           // Duration in milliseconds
+  costSummary?: {                            // Cost tracking
+    totalTokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalCost?: number;
+    currency?: string;
+  };
+}
+```
+
+### Validation & Type Safety
+
+**Dual Validation Approach:**
+- **Compile-time**: TypeScript interfaces provide static type checking
+- **Runtime**: Zod schemas validate data at runtime with detailed error reporting
+
+**Validation Utilities:**
+```typescript
+// Type guard validators
+function validatePatch(patch: unknown): patch is Patch;
+function validateGearTemplate(template: unknown): template is GearTemplate;
+function validateGearInstance(instance: unknown): instance is GearInstance;
+
+// Parse functions with error handling
+function parsePatch(data: unknown): 
+  { success: true; data: Patch } | { success: false; errors: ZodError };
+function parseGearTemplate(data: unknown): 
+  { success: true; data: GearTemplate } | { success: false; errors: ZodError };
+```
+
+**Security Benefits:**
+- Prevents malformed data injection
+- Validates configuration schemas before execution
+- Ensures type consistency across the runtime
+- Provides structured error reporting for debugging
 
 ## Architecture Diagram
 
@@ -139,243 +235,274 @@ interface RevalidateOutletConfig {
 
 ## Runtime Event Model
 
-**Event Types & Payloads:**
+The streaming runtime provides real-time events during patch execution. Events are emitted as Server-Sent Events (SSE) 
+for live monitoring and debugging.
+
+**✅ Implemented Event Types:**
 
 ```typescript
-// Base event structure
-interface ExecutionEvent {
-  id: string;
-  timestamp: number;
-  patchId: string;
-  runId: string;
-}
+export type PatchEvent =
+  | { type: 'RunStart'; runId: string; ts: number }
+  | { type: 'NodeStart'; nodeId: string; ts: number; input: unknown }
+  | { type: 'NodeSuccess'; nodeId: string; ts: number; output: unknown }
+  | { type: 'NodeError'; nodeId: string; ts: number; error: { message: string; stack?: string } }
+  | { type: 'RunComplete'; runId: string; ts: number };
+```
 
-interface RunStartEvent extends ExecutionEvent {
-  type: 'run:start';
-  payload: {
-    trigger: 'inlet' | 'manual';
-    triggerData?: unknown;
-    nodeCount: number;
-  };
-}
+**Event Flow:**
+1. **RunStart**: Patch execution begins with unique run ID
+2. **NodeStart**: Each node begins execution (includes input data)
+3. **NodeSuccess/NodeError**: Node completes with output or error
+4. **RunComplete**: Entire patch execution finishes
 
-interface NodeStartEvent extends ExecutionEvent {
-  type: 'node:start';
-  payload: {
-    nodeId: string;
-    nodeType: 'gear' | 'inlet' | 'outlet';
-    input?: unknown;
-  };
-}
-
-interface NodeSuccessEvent extends ExecutionEvent {
-  type: 'node:success';
-  payload: {
-    nodeId: string;
-    output?: unknown;
-    duration: number;      // milliseconds
-    tokenUsage?: {
-      prompt: number;
-      completion: number;
-      cost: number;        // USD
-    };
-  };
-}
-
-interface NodeErrorEvent extends ExecutionEvent {
-  type: 'node:error';
-  payload: {
-    nodeId: string;
-    error: {
-      message: string;
-      code?: string;
-      stack?: string;
-    };
-    retryable: boolean;
-  };
-}
-
-interface TokenEvent extends ExecutionEvent {
+**Future Event Extensions (Planned):**
+```typescript
+// Future: Token-by-token streaming for LLM nodes
+interface TokenEvent {
   type: 'token';
-  payload: {
-    nodeId: string;
-    token: string;
-    tokenIndex: number;
-    isComplete: boolean;
-  };
+  nodeId: string;
+  token: string;
+  isComplete: boolean;
 }
 
-interface RunCompleteEvent extends ExecutionEvent {
-  type: 'run:complete';
-  payload: {
-    status: 'success' | 'error' | 'partial';
-    duration: number;
-    totalTokens: number;
+// Future: Enhanced cost tracking
+interface NodeSuccessEvent {
+  type: 'NodeSuccess';
+  nodeId: string;
+  ts: number;
+  output: unknown;
+  tokenUsage?: {
+    promptTokens: number;
+    completionTokens: number;
     totalCost: number;
-    outputCount: number;
+    model: string;
   };
 }
-
-type PatchExecutionEvent = RunStartEvent | NodeStartEvent | NodeSuccessEvent | 
-                          NodeErrorEvent | TokenEvent | RunCompleteEvent;
 ```
 
-**Async Generator Pattern:**
+**✅ Implemented Async Generator:**
 ```typescript
-async function* runPatchWithEvents(
-  patchId: string, 
-  input: unknown
-): AsyncGenerator<PatchExecutionEvent> {
-  const runId = generateId();
-  
-  yield { type: 'run:start', id: generateId(), timestamp: Date.now(), 
-          patchId, runId, payload: { trigger: 'inlet', nodeCount: 5 } };
-  
-  try {
-    // TODO: Implement parallel node execution with topological sort
-    for (const node of executionOrder) {
-      yield* executeNode(node, runId);
-    }
+export async function* runPatch(
+  patch: PatchDefinition,
+  initialInput: unknown
+): AsyncGenerator<PatchEvent> {
+  const runId = randomUUID();
+  yield { type: 'RunStart', runId, ts: Date.now() };
+
+  // Topological sort for proper execution order
+  const order = topoSort(patch.nodes.map(n => n.id), patch.edges);
+  const outputs = new Map<string, unknown>();
+
+  for (const nodeId of order) {
+    const node = nodeMap.get(nodeId)!;
+    const input = determineNodeInput(nodeId, patch.edges, outputs, initialInput);
     
-    yield { type: 'run:complete', id: generateId(), timestamp: Date.now(),
-            patchId, runId, payload: { status: 'success', duration: 1200 } };
-  } catch (error) {
-    yield { type: 'run:complete', id: generateId(), timestamp: Date.now(),
-            patchId, runId, payload: { status: 'error', duration: 800 } };
+    yield { type: 'NodeStart', nodeId, ts: Date.now(), input };
+    
+    try {
+      const output = await executeNode(node, input);
+      outputs.set(nodeId, output);
+      yield { type: 'NodeSuccess', nodeId, ts: Date.now(), output };
+    } catch (err) {
+      const error = { message: err.message, stack: err.stack };
+      yield { type: 'NodeError', nodeId, ts: Date.now(), error };
+      yield { type: 'RunComplete', runId, ts: Date.now() };
+      return;
+    }
   }
+
+  yield { type: 'RunComplete', runId, ts: Date.now() };
 }
 ```
 
-**Consumer Pattern:**
+**✅ Implemented Consumer Pattern (SSE Streaming):**
 ```typescript
-// Real-time monitoring
-for await (const event of runPatchWithEvents(patchId, input)) {
-  switch (event.type) {
-    case 'token':
-      streamToClient(event.payload.token);
-      break;
-    case 'node:error':
-      logger.error(`Node ${event.payload.nodeId} failed`, event.payload.error);
-      break;
-    case 'run:complete':
-      updateMetrics(event.payload);
-      break;
-  }
+// Server-Sent Events streaming to client
+function generatorToStream<T>(gen: AsyncGenerator<T>) {
+  return new ReadableStream({
+    async pull(controller) {
+      const { value, done } = await gen.next();
+      if (done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(`data: ${JSON.stringify(value)}\n\n`);
+    }
+  });
 }
+
+// Usage in API route
+const stream = generatorToStream(runPatch(patch, payload));
+return new Response(stream, {
+  headers: { 'Content-Type': 'text/event-stream' }
+});
 ```
 
 ## API Surface
 
-**Route Handlers:**
+**✅ Implemented Route Handlers:**
 
 ```typescript
-// app/api/inlet/[id]/route.ts
+// apps/web/app/api/inlet/[id]/route.ts - IMPLEMENTED
 export async function POST(
-  request: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { id } = params;
-  
-  // TODO: Implement inlet node lookup from database
-  const inletNode = await getInletNode(id);
-  if (!inletNode) return new Response('Inlet not found', { status: 404 });
-  
-  // TODO: Add authentication and rate limiting
-  await validateInletRequest(request, inletNode.config);
-  
-  const input = await request.json();
-  
-  return new Response(
-    new ReadableStream({
-      async start(controller) {
-        for await (const event of runPatchWithEvents(inletNode.patchId, input)) {
-          controller.enqueue(`data: ${JSON.stringify(event)}\n\n`);
-        }
-        controller.close();
-      }
-    }),
-    {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    }
-  );
-}
+  // Input validation
+  if (!params.id || typeof params.id !== 'string' || params.id.trim() === '') {
+    return new Response('Invalid patch ID', { status: 400 });
+  }
 
-// app/api/outlet/[id]/route.ts  
-export async function POST(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+  // Parse JSON payload
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch (err) {
+    return new Response('Invalid JSON payload', { status: 400 });
+  }
+
+  // Load patch and create streaming response
+  try {
+    const patch = await loadPatch(params.id); // TODO: Database integration
+    const gen = runPatch(patch, payload);
+    const stream = generatorToStream(gen);
+    
+    return new Response(stream, {
+      headers: { 'Content-Type': 'text/event-stream' }
+    });
+  } catch (err) {
+    // Return error stream
+    const errorStream = createErrorStream(err);
+    return new Response(errorStream, {
+      headers: { 'Content-Type': 'text/event-stream' }
+    });
+  }
+}
+```
+
+**🚧 Outlet Route (Planned):**
+```typescript
+// app/api/outlet/[id]/route.ts - PLANNED
+export async function POST(request: Request, { params }: { params: { id: string } }) {
   const { id } = params;
   const { data } = await request.json();
   
-  // TODO: Implement outlet node lookup and execution
   const outletNode = await getOutletNode(id);
   return await executeOutlet(outletNode, data);
 }
 ```
 
-**Helper Libraries:**
+**✅ Implemented Helper Libraries:**
 
 ```typescript
-// lib/runtime/patch-runner.ts
-export async function runPatch(
-  patchId: string, 
-  input: unknown,
-  options: { streaming?: boolean } = {}
-): Promise<unknown> {
-  // TODO: Implement patch execution engine
-  const patch = await getPatch(patchId);
-  const executionPlan = createExecutionPlan(patch);
-  
-  if (options.streaming) {
-    return runPatchWithEvents(patchId, input);
-  }
-  
-  return await executeSequentially(executionPlan, input);
+// packages/runtime/runPatch.ts - IMPLEMENTED
+export async function* runPatch(
+  patch: PatchDefinition,
+  initialInput: unknown
+): AsyncGenerator<PatchEvent> {
+  // Streaming patch execution with events
+  // Includes topological sorting, security validation, error handling
 }
 
-// lib/outlets/blob-storage.ts
-export async function publishToBlob(
-  config: BlobOutletConfig,
-  data: unknown
-): Promise<{ url: string; size: number }> {
-  // TODO: Implement blob storage integration
-  const blob = new Blob([JSON.stringify(data)], { 
-    type: config.contentType || 'application/json' 
+// packages/runtime/security.ts - IMPLEMENTED
+export function validateHttpUrl(url: string): void;
+export function createTimeoutController(timeoutMs: number): AbortController;
+
+// packages/runtime/topoSort.ts - IMPLEMENTED  
+export function topoSort(nodeIds: string[], edges: PatchEdge[]): string[];
+
+// packages/runtime/localFns.ts - IMPLEMENTED
+export const localFns: Record<string, (input: unknown) => Promise<unknown>>;
+```
+
+**✅ Implemented Outlet Helpers:**
+
+```typescript
+// packages/outlets/blob.ts - IMPLEMENTED
+export async function uploadBlob(opts: {
+  bucket?: string;
+  path: string;
+  content: string;
+  contentType?: string;
+}): Promise<{ url: string; size: number }> {
+  // Vercel Blob integration with error handling
+  const result = await put(opts.path, opts.content, {
+    access: 'public',
+    contentType: opts.contentType || 'text/plain'
   });
-  
-  // Upload to configured storage provider
-  const url = await uploadBlob(config.bucket, config.path, blob);
-  return { url, size: blob.size };
+  return { url: result.url, size: new Blob([opts.content]).size };
+}
+
+// packages/outlets/revalidate.ts - IMPLEMENTED
+export async function revalidate(paths: string[] | string): Promise<void> {
+  // Next.js cache revalidation with error handling
+  const pathsArray = Array.isArray(paths) ? paths : [paths];
+  pathsArray.forEach(path => revalidatePath(path));
 }
 ```
 
-## Implementation Strategy
+## Implementation Status
 
-**Clean Slate Approach:**
-Since Patch has no production users yet, we can implement breaking changes without 
-migration concerns. This allows for optimal architecture decisions without legacy constraints.
+**✅ Completed Components:**
+- **Runtime Engine**: Streaming patch execution with topological sorting
+- **Event System**: Server-Sent Events for real-time monitoring  
+- **Security Layer**: URL validation and timeout controls for HTTP nodes
+- **Inlet API**: HTTP endpoint for triggering patch execution
+- **Outlet Helpers**: Blob storage and cache revalidation utilities
+- **Data Models**: Comprehensive TypeScript interfaces with Zod validation
+- **Type Safety**: Runtime validation with structured error reporting
 
-**Database Schema Updates:**
-- Add `type: 'gear' | 'inlet' | 'outlet'` field to all `PatchNode` documents
-- Extend `Patch` documents with new node type support
+**🚧 In Progress:**
+- **Database Integration**: Replace mock patch loading with Firestore integration
+- **Authentication**: HMAC and bearer token validation for inlet endpoints
+- **Rate Limiting**: Per-inlet request throttling and abuse prevention
+
+**📋 Planned Features:**
+- **Outlet Routes**: HTTP endpoints for side-effect execution
+- **Visual Components**: ReactFlow nodes for inlet/outlet types
+- **Advanced Workflow**: Conditional routing and sub-patch composition
+- **Token Streaming**: Real-time LLM token emission
+- **MCP Integration**: Model Context Protocol server support
+
+**Database Schema (Planned Updates):**
+- Extend `PatchNode` with `type: 'gear' | 'inlet' | 'outlet'` field
+- Add inlet/outlet configuration storage
+- Implement patch template and instance separation
 - Update Firestore security rules for new node types
-- No migration utilities needed - fresh data model implementation
 
-**ReactFlow Integration:**
-- Replace existing gear-only node registry with multi-type node system
-- Implement new visual components for inlet and outlet nodes
-- Update connection validation logic for cross-node-type edges
+**ReactFlow Integration (Planned):**
+- Multi-type node registry supporting gear/inlet/outlet nodes
+- Visual components for inlet and outlet node configuration
+- Connection validation for cross-node-type edges
+- Drag-and-drop palette with all node types
 
 ## Security & Rate-limiting
 
-**HMAC Authentication:**
+**✅ Implemented Security Measures:**
+
 ```typescript
-// lib/auth/hmac.ts
+// packages/runtime/security.ts - IMPLEMENTED
+export function validateHttpUrl(url: string): void {
+  // SSRF protection - validates URLs against allowlists
+  // Blocks private IP ranges, localhost, and suspicious protocols
+}
+
+export function createTimeoutController(timeoutMs: number): AbortController {
+  // Request timeout protection (default 30 seconds)
+  // Prevents hanging requests and resource exhaustion
+}
+```
+
+**✅ Current Security Features:**
+- **SSRF Protection**: HTTP nodes validate URLs against private IP ranges
+- **Request Timeouts**: Automatic timeout for HTTP nodes (30s default)
+- **Input Validation**: JSON payload validation with error handling
+- **Error Sanitization**: Structured error responses without sensitive data
+
+**🚧 Planned Security Enhancements:**
+
+```typescript
+// Planned: HMAC Authentication
 export function validateHMACSignature(
   payload: string,
   signature: string,
@@ -387,18 +514,20 @@ export function validateHMACSignature(
     .digest('hex');
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
+
+// Planned: Rate Limiting
+interface RateLimitConfig {
+  requests: number;    // Max requests per window
+  window: number;      // Window in seconds  
+  strategy: 'sliding' | 'fixed';
+}
 ```
 
-**Rate Limiting:**
-- Redis-backed sliding window counters per inlet endpoint
-- IP-based and API key-based limits
-- Configurable per-inlet rate limits with burst allowance
-
 **Security Considerations:**
-- Outlet webhooks require explicit URL allowlists
-- Inlet authentication required for production deployments  
-- Environment-based secrets management (no hardcoded credentials)
-- Input validation against JSON schemas prevents injection attacks
+- **Outlet webhooks**: Will require explicit URL allowlists
+- **Inlet authentication**: HMAC/bearer tokens required for production
+- **Environment secrets**: No hardcoded credentials in configuration
+- **Schema validation**: Prevents malformed data injection attacks
 
 ## Performance & Cost
 
@@ -407,9 +536,27 @@ export function validateHMACSignature(
 - **Buffered Mode**: Lower latency for simple patches, easier error recovery
 - Automatic mode selection based on patch complexity and client capabilities
 
-**Token Cost Tracking:**
+**✅ Implemented Cost Tracking (Runtime Data Models):**
 ```typescript
-interface TokenUsage {
+// From packages/runtime/models.ts  
+interface PatchRun {
+  status: 'running' | 'succeeded' | 'failed';
+  startedAt: number;
+  duration: number;
+  costSummary?: {
+    totalTokens?: number;
+    promptTokens?: number;  
+    completionTokens?: number;
+    totalCost?: number;
+    currency?: string;
+  };
+}
+```
+
+**Future Token Cost Tracking:**
+```typescript
+// Planned: Enhanced cost tracking per node
+interface NodeTokenUsage {
   model: string;           // "gpt-4o", "claude-3-sonnet"
   promptTokens: number;
   completionTokens: number;
@@ -417,20 +564,57 @@ interface TokenUsage {
   estimatedCost: number;   // USD based on current pricing
 }
 
-// Aggregate usage per patch run
-interface RunCostSummary {
-  runId: string;
-  totalCost: number;
-  nodeBreakdown: Record<string, TokenUsage>;
-  duration: number;
+interface DetailedRunCostSummary extends PatchRun {
+  nodeBreakdown: Record<string, NodeTokenUsage>;
+  totalDuration: number;
 }
 ```
 
-**Performance Optimizations:**
+**✅ Implemented Performance Features:**
+- **Topological Sorting**: Ensures correct execution order based on dependencies
+- **Security Validation**: SSRF protection with minimal performance impact  
+- **Timeout Controls**: Prevents resource exhaustion from hanging requests
+- **Streaming Events**: Memory-efficient real-time monitoring
+- **Error Handling**: Fast-fail execution stops on first node error
+
+**Planned Performance Optimizations:**
 - Parallel node execution where dependencies allow
-- Connection pooling for outlet HTTP requests
+- Connection pooling for outlet HTTP requests  
 - Gear output caching for repeated inputs
 - Database batch operations for log updates
+
+## Current Node Types
+
+**✅ Implemented Node Types:**
+
+```typescript
+// types/Node.ts - Current implementation
+export interface HttpNode {
+  id: string;
+  kind: 'http';
+  url: string;  // SSRF-validated HTTP endpoint
+}
+
+export interface LocalNode {
+  id: string;
+  kind: 'local';
+  fn: string;   // Function name from localFns registry
+}
+
+export type Node = HttpNode | LocalNode;
+```
+
+**Node Execution:**
+- **HTTP Nodes**: Make POST requests to external APIs with timeout protection
+- **Local Nodes**: Execute registered functions from the `localFns` registry
+- **Security**: All HTTP URLs validated against SSRF attacks
+- **Error Handling**: Structured error responses with optional stack traces
+
+**Future Node Types (Planned):**
+- **LLM Nodes**: Direct integration with OpenAI, Anthropic, etc.
+- **Inlet Nodes**: HTTP entrypoints that trigger patch execution
+- **Outlet Nodes**: Side-effect actions (blob storage, notifications, etc.)
+- **MCP Nodes**: Integration with Model Context Protocol servers
 
 ## Future Extensions
 
