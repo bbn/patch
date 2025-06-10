@@ -125,16 +125,16 @@ describe('HTTP Security Validation', () => {
       });
 
       it('blocks IPv6 localhost (::1)', () => {
-        expect(() => validateHttpUrl('http://::1:3000')).toThrow(
+        expect(() => validateHttpUrl('http://[::1]:3000')).toThrow(
           'Private network access forbidden: ::1'
         );
       });
 
       it('blocks IPv6 private ranges', () => {
-        expect(() => validateHttpUrl('http://fc00::1')).toThrow(
+        expect(() => validateHttpUrl('http://[fc00::1]')).toThrow(
           'Private network access forbidden: fc00::1'
         );
-        expect(() => validateHttpUrl('http://fd12:3456:789a:bcde::1')).toThrow(
+        expect(() => validateHttpUrl('http://[fd12:3456:789a:bcde::1]')).toThrow(
           'Private network access forbidden: fd12:3456:789a:bcde::1'
         );
       });
@@ -302,7 +302,7 @@ describe('HTTP Security Validation', () => {
       });
 
       it('prevents internal service access', () => {
-        process.env.PATCH_ALLOWED_HOSTS = 'internal-service';
+        process.env.PATCH_ALLOWED_HOSTS = 'api.openai.com,api.anthropic.com';
         expect(() => validateHttpUrl('http://internal-service:8080/secrets')).toThrow(
           'Host not allowed: internal-service'
         );
