@@ -22,13 +22,16 @@ function getAllowedHosts(): string[] {
  * Check if a hostname represents a private network address
  */
 function isPrivateNetwork(hostname: string): boolean {
+  // Remove IPv6 brackets if present
+  const cleanHostname = hostname.replace(/^\[|\]$/g, '');
+  
   // Block localhost variants
-  if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname.toLowerCase())) {
+  if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(cleanHostname.toLowerCase())) {
     return true;
   }
   
-  // Block private IP ranges
-  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  // Block private IPv4 ranges
+  const ipv4Match = cleanHostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
   if (ipv4Match) {
     const [, a, b, c, d] = ipv4Match.map(Number);
     
@@ -48,8 +51,13 @@ function isPrivateNetwork(hostname: string): boolean {
     if (a === 127) return true;
   }
   
-  // Block IPv6 private ranges (simplified check)
-  if (hostname.includes('::1') || hostname.startsWith('fc') || hostname.startsWith('fd')) {
+  // Block IPv6 private ranges and localhost
+  const lowerHostname = cleanHostname.toLowerCase();
+  if (lowerHostname === '::1' || 
+      lowerHostname.startsWith('fc00:') || 
+      lowerHostname.startsWith('fd') ||
+      lowerHostname.startsWith('fe80:') || // Link-local
+      lowerHostname.startsWith('::ffff:')) { // IPv4-mapped IPv6
     return true;
   }
   
@@ -75,7 +83,8 @@ export function validateHttpUrl(urlString: string): void {
   
   // Block private networks
   if (isPrivateNetwork(url.hostname)) {
-    throw new Error(`Private network access forbidden: ${url.hostname}`);
+    const cleanHostname = url.hostname.replace(/^\[|\]$/g, '');
+    throw new Error(`Private network access forbidden: ${cleanHostname}`);
   }
   
   // Check against allowlist
