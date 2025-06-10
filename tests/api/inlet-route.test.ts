@@ -1,4 +1,4 @@
-import { POST } from '@/apps/web/app/api/inlet/[id]/route';
+import { POST } from '@/app/api/inlet/[id]/route';
 import { runPatch } from '@/packages/runtime/runPatch';
 import { logError, logWarning } from '@/lib/logger';
 

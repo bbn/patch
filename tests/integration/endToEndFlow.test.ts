@@ -12,7 +12,7 @@ jest.mock('@/packages/outlets/revalidate', () => ({
 const mockPatch: PatchDefinition = require('../../patches/demo-simple.json');
 
 // Mock the API route so we can stub loadPatch
-jest.mock('@/apps/web/app/api/inlet/[id]/route', () => {
+jest.mock('@/app/api/inlet/[id]/route', () => {
   const { runPatch } = require('@/packages/runtime/runPatch');
 
   const loadPatch = jest.fn(async (patchId: string) => mockPatch);
@@ -42,7 +42,7 @@ jest.mock('@/apps/web/app/api/inlet/[id]/route', () => {
   return { __esModule: true, POST, loadPatch };
 });
 
-import { POST } from '@/apps/web/app/api/inlet/[id]/route';
+import { POST } from '@/app/api/inlet/[id]/route';
 
 describe('Patch Runtime end-to-end flow', () => {
 
@@ -50,10 +50,10 @@ describe('Patch Runtime end-to-end flow', () => {
   describe('Mock validation', () => {
     it('should have mock loadPatch signature matching real implementation', async () => {
       // Import the real module to compare signatures
-      const realModule = await import('@/apps/web/app/api/inlet/[id]/route');
+      const realModule = await import('@/app/api/inlet/[id]/route');
       
       // Get the mocked loadPatch from the mock
-      const { loadPatch } = require('@/apps/web/app/api/inlet/[id]/route');
+      const { loadPatch } = require('@/app/api/inlet/[id]/route');
       
       // Both should be functions
       expect(typeof loadPatch).toBe('function');
@@ -89,9 +89,9 @@ describe('Patch Runtime end-to-end flow', () => {
     expect(response.headers.get('Content-Type')).toBe('text/event-stream');
 
     const text = await response.text();
-    const events = text.trim().split('\n\n').map(chunk => JSON.parse(chunk.replace(/^data: /, '')));
+    const events = text.trim().split('\n\n').map((chunk: string) => JSON.parse(chunk.replace(/^data: /, '')));
 
-    const types = events.map(e => e.type);
+    const types = events.map((e: any) => e.type);
     expect(types).toEqual([
       'RunStart',
       'NodeStart',
