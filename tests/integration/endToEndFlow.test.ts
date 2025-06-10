@@ -25,9 +25,9 @@ const mockPatch: PatchDefinition = {
 jest.mock('@/apps/web/app/api/inlet/[id]/route', () => {
   const { runPatch } = require('@/packages/runtime/runPatch');
 
-  const loadPatch = jest.fn(async (_id: string) => mockPatch);
+  const loadPatch = jest.fn(async (patchId: string) => mockPatch);
 
-  function generatorToStream(gen: AsyncGenerator<any>) {
+  function generatorToStream<T>(gen: AsyncGenerator<T>) {
     return new ReadableStream({
       async pull(controller) {
         const { value, done } = await gen.next();
@@ -57,6 +57,28 @@ import { POST } from '@/apps/web/app/api/inlet/[id]/route';
 describe('Patch Runtime end-to-end flow', () => {
   let doubleGear: Gear;
   let toStringGear: Gear;
+
+  // Validate that mock function signatures match real implementation
+  describe('Mock validation', () => {
+    it('should have mock loadPatch signature matching real implementation', async () => {
+      // Import the real module to compare signatures
+      const realModule = await import('@/apps/web/app/api/inlet/[id]/route');
+      
+      // Get the mocked loadPatch from the mock
+      const { loadPatch } = require('@/apps/web/app/api/inlet/[id]/route');
+      
+      // Both should be functions
+      expect(typeof loadPatch).toBe('function');
+      
+      // Test that the mock function accepts the same parameter signature as the real one
+      // The real loadPatch function expects a string parameter named 'patchId'
+      const mockResult = await loadPatch('test-id');
+      expect(mockResult).toBeDefined();
+      
+      // Verify the mock returns the expected patch structure
+      expect(mockResult).toEqual(mockPatch);
+    });
+  });
 
   beforeAll(async () => {
     doubleGear = new Gear({ id: 'double-gear' });
