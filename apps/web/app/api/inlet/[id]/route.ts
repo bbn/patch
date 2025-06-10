@@ -1,25 +1,12 @@
 import { runPatch } from '@/packages/runtime/runPatch';
 import { logError, logWarning } from '@/lib/logger';
+import { PatchDefinition } from '@/types/Patch';
 import demo from '@/patches/demo-simple.json';
 
 // TODO: Replace with actual patch loading from database
-async function loadPatch(patchId: string) {
+async function loadPatch(patchId: string): Promise<PatchDefinition> {
   if (patchId === 'demo-simple') {
-    const nodes = demo.nodes
-      .filter(n => n.type !== 'inlet')
-      .map(n => {
-        if (n.type === 'fn') {
-          return { id: n.id, kind: 'local' as const, fn: n.fn as string };
-        }
-        if (n.type === 'outlet' && n.variant === 'revalidate') {
-          return { id: n.id, kind: 'local' as const, fn: 'revalidate' };
-        }
-        throw new Error(`Unsupported node type: ${n.type}`);
-      });
-    const edges = (demo.edges as [string, string][])
-      .filter(e => e[0] !== 'inlet')
-      .map(([source, target]) => ({ source, target }));
-    return { nodes, edges };
+    return demo as PatchDefinition;
   }
 
   // Mock patch definition for now
