@@ -1,0 +1,8 @@
+{
+  "nodes": [
+    { "id": "inlet", "type": "inlet" },
+    { "id": "echo", "type": "fn", "fn": "echoGear" },
+    { "id": "reval", "type": "outlet", "variant": "revalidate", "config": { "paths": ["/demo"] } }
+  ],
+  "edges": [ ["inlet", "echo"], ["echo", "reval"] ]
+}
