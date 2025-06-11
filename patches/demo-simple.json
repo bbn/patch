@@ -1,0 +1,9 @@
+{
+  "nodes": [
+    { "id": "echo", "kind": "local", "fn": "echoGear" },
+    { "id": "reval", "kind": "local", "fn": "revalidate" }
+  ],
+  "edges": [
+    { "source": "echo", "target": "reval" }
+  ]
+}
