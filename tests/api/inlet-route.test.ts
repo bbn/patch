@@ -30,7 +30,7 @@ describe('Inlet API Route', () => {
     return new Request('http://localhost:3000/api/inlet/test-patch', options);
   };
 
-  const testParams = { id: 'test-patch-id' };
+  const testParams = Promise.resolve({ id: 'test-patch-id' });
 
   describe('Method validation', () => {
     it('returns 405 for non-POST methods', async () => {
@@ -42,20 +42,20 @@ describe('Inlet API Route', () => {
 
   describe('Input validation', () => {
     it('returns 400 for missing patch ID', async () => {
-      const response = await POST(createRequest({}), { params: { id: '' } });
+      const response = await POST(createRequest({}), { params: Promise.resolve({ id: '' }) });
       expect(response.status).toBe(400);
       expect(await response.text()).toBe('Invalid patch ID');
       expect(logWarning).toHaveBeenCalledWith('inlet-route', 'Invalid patch ID provided: ');
     });
 
     it('returns 400 for null patch ID', async () => {
-      const response = await POST(createRequest({}), { params: { id: null as any } });
+      const response = await POST(createRequest({}), { params: Promise.resolve({ id: null as any }) });
       expect(response.status).toBe(400);
       expect(await response.text()).toBe('Invalid patch ID');
     });
 
     it('returns 400 for whitespace-only patch ID', async () => {
-      const response = await POST(createRequest({}), { params: { id: '   ' } });
+      const response = await POST(createRequest({}), { params: Promise.resolve({ id: '   ' }) });
       expect(response.status).toBe(400);
       expect(await response.text()).toBe('Invalid patch ID');
     });

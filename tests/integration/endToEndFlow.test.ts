@@ -83,7 +83,7 @@ describe('Patch Runtime end-to-end flow', () => {
       body: JSON.stringify({ msg: 'Hello' })
     });
 
-    const response = await POST(req, { params: { id: 'demo-simple' } });
+    const response = await POST(req, { params: Promise.resolve({ id: 'demo-simple' }) });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toBe('text/event-stream');

@@ -45,15 +45,17 @@ function generatorToStream<T>(gen: AsyncGenerator<T>) {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
+  const resolvedParams = await params;
+
   // Input validation for patch ID
-  if (!params.id || typeof params.id !== 'string' || params.id.trim() === '') {
-    logWarning('inlet-route', `Invalid patch ID provided: ${params.id}`);
+  if (!resolvedParams.id || typeof resolvedParams.id !== 'string' || resolvedParams.id.trim() === '') {
+    logWarning('inlet-route', `Invalid patch ID provided: ${resolvedParams.id}`);
     return new Response('Invalid patch ID', { status: 400 });
   }
 
@@ -70,11 +72,11 @@ export async function POST(
 
   let gen: AsyncGenerator<unknown>;
   try {
-    const patch = await loadPatch(params.id);
+    const patch = await loadPatch(resolvedParams.id);
     gen = runPatch(patch, payload);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    logError('inlet-route', `Failed to start patch execution for ${params.id}: ${errorMessage}`, err);
+    logError('inlet-route', `Failed to start patch execution for ${resolvedParams.id}: ${errorMessage}`, err);
     
     const errorStream = new ReadableStream({
       start(controller) {
